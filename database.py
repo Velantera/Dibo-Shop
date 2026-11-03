@@ -12,7 +12,7 @@ def init_db_sync():
     _db = _client[MONGO_DB_NAME]
 
 # ==========================================
-# PRODUCTS (No changes here)
+# PRODUCTS
 # ==========================================
 async def add_product(name: str, price: float, description: str, photo_file_id: str, stock: int, sizes: list):
     result = await _db.products.insert_one({
@@ -56,6 +56,13 @@ async def decrement_stock(product_id: str, qty: int = 1):
     except Exception:
         pass
 
+async def increment_stock(product_id: str, qty: int = 1):
+    """Used when an order is cancelled"""
+    try:
+        await _db.products.update_one({"_id": ObjectId(product_id)}, {"$inc": {"stock": qty}})
+    except Exception:
+        pass
+
 # ==========================================
 # ORDERS
 # ==========================================
@@ -66,8 +73,10 @@ async def create_order(user_id: int, username: str, items: list, total: float, p
         "items": items,
         "total": total,
         "payment_method": payment_method,
-        "status": "pending_payment",
-        "address": "", # <-- Added Address
+        "status": "pending_details",
+        "customer_name": "",
+        "phone_number": "",
+        "address": "",
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -78,9 +87,12 @@ async def get_order(order_id: str):
     except Exception:
         return None
 
-async def update_order_address(order_id: str, address: str):
+async def update_order_details(order_id: str, name: str, phone: str, address: str):
     try:
-        await _db.orders.update_one({"_id": ObjectId(order_id)}, {"$set": {"address": address}})
+        await _db.orders.update_one(
+            {"_id": ObjectId(order_id)}, 
+            {"$set": {"customer_name": name, "phone_number": phone, "address": address}}
+        )
     except Exception:
         pass
 
