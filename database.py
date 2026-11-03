@@ -1,55 +1,78 @@
-import aiosqlite
-import json
+from datetime import datetime
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorClient
+from config import MONGO_URL, MONGO_DB_NAME
 
-DB_PATH = "shop.db"
+_client: AsyncIOMotorClient | None = None
+_db = None
 
-async def init_db():
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                price REAL NOT NULL,
-                description TEXT,
-                photo_file_id TEXT,
-                stock INTEGER DEFAULT 0
-            )
-        """)
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS orders (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                username TEXT,
-                items_json TEXT,
-                total REAL,
-                payment_method TEXT,
-                status TEXT DEFAULT 'pending_payment',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await db.commit()
+def init_db_sync():
+    """Call once at startup. Motor is lazy — connection opens on first query."""
+    global _client, _db
+    _client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=5000)
+    _db = _client[MONGO_DB_NAME]
+
+# ---------- Products ----------
+
+async def add_product(name: str, price: float, description: str, photo_file_id: str, stock: int):
+    result = await _db.products.insert_one({
+        "name": name,
+        "price": price,
+        "description": description,
+        "photo_file_id": photo_file_id,
+        "stock": stock,
+        "created_at": datetime.utcnow(),
+    })
+    return str(result.inserted_id)
 
 async def get_products():
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT id, name, price, description, photo_file_id, stock FROM products WHERE stock > 0") as cursor:
-            return await cursor.fetchall()
+    cursor = _db.products.find({"stock": {"$gt": 0}})
+    return await cursor.to_list(length=None)
 
-async def create_order(user_id, username, items, total, payment_method):
-    async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute(
-            "INSERT INTO orders (user_id, username, items_json, total, payment_method, status) VALUES (?, ?, ?, ?, ?, 'pending_payment')",
-            (user_id, username, json.dumps(items), total, payment_method)
-        )
-        order_id = cursor.lastrowid
-        await db.commit()
-        return order_id
+async def get_product(product_id: str):
+    try:
+        return await _db.products.find_one({"_id": ObjectId(product_id)})
+    except Exception:
+        return None
 
-async def update_order_status(order_id, status):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE orders SET status = ? WHERE id = ?", (status, order_id))
-        await db.commit()
+async def decrement_stock(product_id: str, qty: int = 1):
+    await _db.products.update_one(
+        {"_id": ObjectId(product_id)},
+        {"$inc": {"stock": -qty}}
+    )
 
-async def get_order(order_id):
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT * FROM orders WHERE id = ?", (order_id,)) as cursor:
-            return await cursor.fetchone()
+# ---------- Orders ----------
+
+async def create_order(user_id: int, username: str, items: list, total: float, payment_method: str = "pending"):
+    result = await _db.orders.insert_one({
+        "user_id": user_id,
+        "username": username,
+        "items": items,
+        "total": total,
+        "payment_method": payment_method,
+        "status": "pending_payment",
+        "created_at": datetime.utcnow(),
+    })
+    return str(result.inserted_id)
+
+async def get_order(order_id: str):
+    try:
+        return await _db.orders.find_one({"_id": ObjectId(order_id)})
+    except Exception:
+        return None
+
+async def update_order_status(order_id: str, status: str):
+    await _db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"status": status, "updated_at": datetime.utcnow()}}
+    )
+
+async def update_payment_method(order_id: str, method: str):
+    await _db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"payment_method": method}}
+    )
+
+async def get_user_orders(user_id: int):
+    cursor = _db.orders.find({"user_id": user_id}).sort("created_at", -1)
+    return await cursor.to_list(length=20)
