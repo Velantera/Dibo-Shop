@@ -5,7 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 from config import PAYMENT_ACCOUNTS, OWNER_ID, CHANNEL_ID
 from database import (
     get_products, get_all_products, get_product, create_order,
-    update_order_status, get_user_orders, add_product, update_product
+    update_order_status, get_user_orders, add_product, update_product, delete_product
 )
 from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb
 
@@ -25,8 +25,9 @@ class AddProductState(StatesGroup):
 
 class EditProductState(StatesGroup):
     waiting_id = State()
-    waiting_field = State()
+    waiting_action = State()
     waiting_value = State()
+    confirm_delete = State()
 
 # --- Keyboards ---
 def main_menu_kb():
@@ -168,9 +169,8 @@ async def checkout_cod(callback: CallbackQuery):
     order = await get_order(order_id)
     await update_order_status(order_id, "cod_pending")
     
-    # Notify Owner Privately
-    await callback.bot.send_photo(
-        chat_id=OWNER_ID, photo=None, # No photo needed
+    await callback.bot.send_message(
+        chat_id=OWNER_ID,
         text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nTotal: {order['total']} ETB\n\nDeliver and collect cash.",
         reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
     )
@@ -208,7 +208,6 @@ async def receive_screenshot(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data.get("order_id")
 
-    # Send ONLY to OWNER_ID (Private)
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
         caption=f"🚨 **New Payment Proof** 🚨\nOrder: `{order_id}`\nUser: @{message.from_user.username or message.from_user.id}\n\nVerify the transaction then click below.",
@@ -236,13 +235,12 @@ async def my_orders(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]), parse_mode="Markdown")
 
 # ==========================================
-# 5. ADMIN: ADD & EDIT PRODUCT (OWNER ONLY)
+# 5. ADMIN: ADD PRODUCT (OWNER ONLY)
 # ==========================================
 @router.message(F.text == "/addproduct")
 async def cmd_addproduct(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID:
-        await message.answer("⛔ You are not authorized to use this command.")
-        return
+        return await message.answer("⛔ You are not authorized to use this command.")
         
     await message.answer("📸 Send me a **photo** of the dress.")
     await state.set_state(AddProductState.waiting_photo)
@@ -320,18 +318,19 @@ async def cancel_post(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("✅ Product saved (not posted).")
     await state.clear()
 
-# --- EDIT PRODUCT FLOW ---
+# ==========================================
+# 6. ADMIN: EDIT & DELETE PRODUCT (OWNER ONLY)
+# ==========================================
 @router.message(F.text == "/editproduct")
 async def cmd_editproduct(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID:
-        await message.answer("⛔ Unauthorized.")
-        return
+        return await message.answer("⛔ Unauthorized.")
+        
     products = await get_all_products()
     if not products:
-        await message.answer("No products found in DB.")
-        return
+        return await message.answer("No products found in DB.")
     
-    text = "Send the **Product ID** you want to edit:\n\n"
+    text = "Send the **Product ID** you want to edit/delete:\n\n"
     for p in products:
         text += f"`{p['_id']}` — {p['name']} (Stock: {p['stock']}, Price: {p['price']})\n"
     
@@ -343,37 +342,82 @@ async def edit_id(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID: return
     product = await get_product(message.text.strip())
     if not product:
-        await message.answer("❌ Invalid ID. Try again.")
-        return
+        return await message.answer("❌ Invalid ID. Try again.")
     
-    await state.update_data(edit_id=message.text.strip())
+    await state.update_data(edit_id=message.text.strip(), product_name=product['name'])
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Price", callback_data="edit_price")],
-        [InlineKeyboardButton(text="Stock", callback_data="edit_stock")]
+        [InlineKeyboardButton(text="🖼 Update Photo", callback_data="edit_photo")],
+        [InlineKeyboardButton(text="📝 Update Name", callback_data="edit_name")],
+        [InlineKeyboardButton(text="📄 Update Description", callback_data="edit_description")],
+        [InlineKeyboardButton(text="💰 Update Price", callback_data="edit_price")],
+        [InlineKeyboardButton(text="📦 Update Stock", callback_data="edit_stock")],
+        [InlineKeyboardButton(text="🗑 DELETE PRODUCT", callback_data="edit_delete")]
     ])
     await message.answer(f"Editing **{product['name']}**.\nWhat do you want to change?", reply_markup=kb, parse_mode="Markdown")
-    await state.set_state(EditProductState.waiting_field)
+    await state.set_state(EditProductState.waiting_action)
 
-@router.callback_query(F.data.startswith("edit_"), EditProductState.waiting_field)
+@router.callback_query(F.data == "edit_delete", EditProductState.waiting_action)
+async def confirm_delete(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ YES, Delete Forever", callback_data="confirm_delete_yes")],
+        [InlineKeyboardButton(text="❌ Cancel", callback_data="menu_main")]
+    ])
+    await callback.message.edit_text(f"⚠️ Are you sure you want to delete **{data['product_name']}**? This cannot be undone.", reply_markup=kb, parse_mode="Markdown")
+    await state.set_state(EditProductState.confirm_delete)
+    await callback.answer()
+
+@router.callback_query(F.data == "confirm_delete_yes", EditProductState.confirm_delete)
+async def execute_delete(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    await delete_product(data['edit_id'])
+    await callback.message.edit_text("🗑 **Product Deleted Successfully.**")
+    await state.clear()
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("edit_"), EditProductState.waiting_action)
 async def edit_field(callback: CallbackQuery, state: FSMContext):
     field = callback.data.split("_")[1]
     await state.update_data(edit_field=field)
-    await callback.message.edit_text(f"Send the **new {field}** value:")
+    
+    if field == "photo":
+        await callback.message.edit_text("📸 Send the **new Photo** for this product:")
+    else:
+        await callback.message.edit_text(f"Send the **new {field.title()}** value:")
+        
     await state.set_state(EditProductState.waiting_value)
     await callback.answer()
 
+@router.message(EditProductState.waiting_value, F.photo)
+async def edit_photo_value(message: Message, state: FSMContext):
+    if message.from_user.id != OWNER_ID: return
+    data = await state.get_data()
+    if data['edit_field'] == "photo":
+        await update_product(data['edit_id'], {"photo_file_id": message.photo[-1].file_id})
+        await message.answer("✅ Product photo updated successfully!")
+        await state.clear()
+    else:
+        await message.answer("❌ Please send text, not a photo.")
+
 @router.message(EditProductState.waiting_value)
-async def edit_value(message: Message, state: FSMContext):
+async def edit_text_value(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID: return
     data = await state.get_data()
     field = data['edit_field']
+    
+    if field == "photo":
+        return await message.answer("❌ Please send a photo, not text.")
+        
     val = message.text.strip()
     
     try:
-        val = float(val) if field == "price" else int(val)
+        if field == "price": val = float(val)
+        elif field == "stock": val = int(val)
+        
         await update_product(data['edit_id'], {field: val})
-        await message.answer(f"✅ Product updated successfully! {field.title()} is now {val}.")
+        await message.answer(f"✅ Product updated! **{field.title()}** is now: `{val}`", parse_mode="Markdown")
     except:
-        await message.answer("❌ Invalid value format.")
+        await message.answer("❌ Invalid value format. Please try again.")
         
     await state.clear()
