@@ -14,3 +14,10 @@ def admin_verify_kb(order_id: str):
             InlineKeyboardButton(text="❌ Reject", callback_data=f"admin_reject_{order_id}"),
         ]
     ])
+
+# NEW: For Cash on Delivery
+def cod_verify_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Mark as Delivered (Collected Cash)", callback_data=f"admin_delivered_{order_id}")],
+        [InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_reject_{order_id}")]
+    ])
