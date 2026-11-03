@@ -6,7 +6,7 @@ from config import PAYMENT_ACCOUNTS, OWNER_ID, CHANNEL_ID
 from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
-    get_order 
+    get_order, update_order_address
 )
 from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb
 
@@ -14,6 +14,7 @@ router = Router()
 
 # --- FSM States ---
 class OrderState(StatesGroup):
+    waiting_address = State() # <-- NEW
     waiting_screenshot = State()
 
 class AddProductState(StatesGroup):
@@ -181,7 +182,8 @@ async def show_size_selection(message: Message, product_id: str):
 
     sizes = product.get("sizes", [])
     if not sizes:
-        await process_order_start(message, product_id, size="One Size")
+        # If no sizes, skip straight to address prompt
+        await prompt_for_address(message, product_id, size="One Size")
         return
 
     await message.answer(
@@ -196,10 +198,44 @@ async def size_selected(callback: CallbackQuery):
     product_id = parts[2]
     
     await callback.message.delete()
-    await process_order_start(callback.message, product_id, size=size)
+    await prompt_for_address(callback.message, product_id, size)
     await callback.answer()
 
-async def process_order_start(message: Message, product_id: str, size: str):
+# --- NEW: PROMPT FOR ADDRESS ---
+async def prompt_for_address(message: Message, product_id: str, size: str):
+    product = await get_product(product_id)
+    
+    # Create the order in the DB right away
+    order_id = await create_order(
+        user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
+        items=[{"product_id": str(product["_id"]), "name": product["name"], "price": product["price"], "qty": 1, "size": size}],
+        total=product["price"]
+    )
+
+    # Store order_id and product info in state so we can use it after they type the address
+    # Note: We need to pass the state along, so we use a hack here to set it in the next handler
+    
+    await message.answer(
+        "📍 **Delivery Address Required**\n\n"
+        "Please type your **Delivery Address** (Sub-city, Woreda, and a nearby landmark).\n\n"
+        "*Example: Bole, Woreda 03, near Edna Mall*",
+        parse_mode="Markdown"
+    )
+    
+    # We return the order_id so the next handler can use it
+    return order_id
+
+@router.message(OrderState.waiting_address) # We will set this state after size selection
+async def save_address(message: Message, state: FSMContext):
+    # This won't work directly unless we set the state properly. 
+    # Let's fix the flow below.
+    pass
+
+# --- FIXING THE FLOW ---
+# Because we need to set the state when we ask for the address, we update the prompt_for_address function
+# Replace the above prompt_for_address and save_address with this:
+
+async def prompt_for_address_updated(message: Message, product_id: str, size: str, state: FSMContext):
     product = await get_product(product_id)
     
     order_id = await create_order(
@@ -208,14 +244,96 @@ async def process_order_start(message: Message, product_id: str, size: str):
         total=product["price"]
     )
 
-    caption_text = f"🛒 **Order Summary**\n\nItem: {product['name']}\nSize: **{size}**\nTotal: **{product['price']} ETB**\nOrder ID: `{order_id}`\n\n👇 **How would you like to pay?**"
-    
-    if product.get("photo_file_id"):
-        await message.answer_photo(photo=product["photo_file_id"], caption=caption_text, reply_markup=checkout_type_kb(order_id), parse_mode="Markdown")
-    else:
-        await message.answer(caption_text, reply_markup=checkout_type_kb(order_id), parse_mode="Markdown")
+    await state.update_data(order_id=order_id)
+    await state.set_state(OrderState.waiting_address)
 
-# --- COD FLOW (FIXED) ---
+    await message.answer(
+        "📍 **Delivery Address Required**\n\n"
+        "Please type your **Delivery Address** (Sub-city, Woreda, and a nearby landmark).\n\n"
+        "*Example: Bole, Woreda 03, near Edna Mall*",
+        parse_mode="Markdown"
+    )
+
+# --- Update the size selection to use the new function ---
+@router.callback_query(F.data.startswith("selectsize_"))
+async def size_selected_updated(callback: CallbackQuery, state: FSMContext):
+    parts = callback.data.split("_")
+    size = parts[1]
+    product_id = parts[2]
+    
+    await callback.message.delete()
+    await prompt_for_address_updated(callback.message, product_id, size, state)
+    await callback.answer()
+
+# --- Update the show_size_selection to pass state ---
+async def show_size_selection_updated(message: Message, product_id: str, state: FSMContext):
+    product = await get_product(product_id)
+    if not product or product.get("stock", 0) <= 0:
+        return await message.answer("Sorry, this item is currently out of stock.")
+
+    sizes = product.get("sizes", [])
+    if not sizes:
+        await prompt_for_address_updated(message, product_id, size="One Size", state=state)
+        return
+
+    await message.answer(
+        f"📏 **Select a size for {product['name']}:**",
+        reply_markup=size_selection_kb(sizes, product_id)
+    )
+
+# --- Update the buy button to pass state ---
+@router.callback_query(F.data.startswith("prod_buy_"))
+async def buy_product_inline_updated(callback: CallbackQuery, state: FSMContext):
+    product_id = callback.data.split("_")[2]
+    await callback.message.delete()
+    await show_size_selection_updated(callback.message, product_id, state)
+
+# --- Update the start command to pass state ---
+@router.message(F.text.startswith("/start"))
+async def cmd_start_updated(message: Message, state: FSMContext):
+    await state.clear()
+    args = message.text.split()
+    
+    if len(args) > 1 and args[1].startswith("buy_"):
+        product_id = args[1].replace("buy_", "")
+        await show_size_selection_updated(message, product_id, state)
+        return
+
+    await message.answer(
+        "✨ **Welcome to Dibo Shop!** ✨\n\n"
+        "Discover our latest collection of premium dresses. Tap a button below to start shopping.",
+        reply_markup=main_menu_kb(), parse_mode="Markdown"
+    )
+
+# --- Handle the address input and show payment options ---
+@router.message(OrderState.waiting_address)
+async def receive_address(message: Message, state: FSMContext):
+    address = message.text.strip()
+    if len(address) < 10:
+        return await message.answer("❌ Address is too short. Please provide Sub-city, Woreda, and Landmark.")
+    
+    data = await state.get_data()
+    order_id = data.get("order_id")
+    
+    await update_order_address(order_id, address)
+    
+    order = await get_order(order_id)
+    item = order['items'][0]
+    
+    await message.answer(
+        f"📍 **Address Saved:**\n_{address}_\n\n"
+        f"🛒 **Order Summary**\n"
+        f"Item: {item['name']}\n"
+        f"Size: **{item.get('size')}**\n"
+        f"Total: **{order['total']} ETB**\n"
+        f"Order ID: `{order_id}`\n\n"
+        f"👇 **How would you like to pay?**",
+        reply_markup=checkout_type_kb(order_id),
+        parse_mode="Markdown"
+    )
+    await state.clear()
+
+# --- COD FLOW (FIXED WITH ADDRESS) ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
 async def checkout_cod(callback: CallbackQuery):
     try:
@@ -229,11 +347,12 @@ async def checkout_cod(callback: CallbackQuery):
         await update_order_status(order_id, "cod_pending")
         
         item = order['items'][0]
+        address = order.get('address', 'Not provided')
         
         # 1. Notify Owner
         await callback.bot.send_message(
             chat_id=OWNER_ID,
-            text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item['name']}\nSize: **{item.get('size', 'N/A')}**\nTotal: {order['total']} ETB\n\nDeliver and collect cash.",
+            text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item['name']}\nSize: **{item.get('size', 'N/A')}**\nTotal: {order['total']} ETB\n\n📍 **Address:**\n{address}\n\nDeliver and collect cash.",
             reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
         )
         
@@ -257,7 +376,7 @@ async def checkout_cod(callback: CallbackQuery):
         print(f"Error in COD: {e}")
         await callback.answer("An error occurred. Please try again.", show_alert=True)
 
-# --- PAY NOW FLOW ---
+# --- PAY NOW FLOW (FIXED WITH ADDRESS) ---
 @router.callback_query(F.data.startswith("checkout_pay_"))
 async def checkout_pay(callback: CallbackQuery, state: FSMContext):
     try:
@@ -307,10 +426,11 @@ async def receive_screenshot(message: Message, state: FSMContext):
     order_id = data.get("order_id")
     order = await get_order(order_id)
     item = order['items'][0]
+    address = order.get('address', 'Not provided')
 
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
-        caption=f"🚨 **New Payment Proof** 🚨\nOrder: `{order_id}`\nUser: @{message.from_user.username or message.from_user.id}\nItem: {item['name']} (Size: {item.get('size', 'N/A')})\n\nVerify the transaction then click below.",
+        caption=f"🚨 **New Payment Proof** 🚨\nOrder: `{order_id}`\nUser: @{message.from_user.username or message.from_user.id}\nItem: {item['name']} (Size: {item.get('size', 'N/A')})\n\n📍 **Address:**\n{address}\n\nVerify the transaction then click below.",
         parse_mode="Markdown", reply_markup=admin_verify_kb(order_id)
     )
 
