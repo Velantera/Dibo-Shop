@@ -12,16 +12,12 @@ def init_db_sync():
     _db = _client[MONGO_DB_NAME]
 
 # ==========================================
-# PRODUCTS
+# PRODUCTS (No changes here)
 # ==========================================
 async def add_product(name: str, price: float, description: str, photo_file_id: str, stock: int, sizes: list):
     result = await _db.products.insert_one({
-        "name": name,
-        "price": price,
-        "description": description,
-        "photo_file_id": photo_file_id,
-        "stock": stock,
-        "sizes": sizes, # <-- NEW: e.g., ["S", "M", "L"] or ["38", "40"]
+        "name": name, "price": price, "description": description,
+        "photo_file_id": photo_file_id, "stock": stock, "sizes": sizes,
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -67,10 +63,11 @@ async def create_order(user_id: int, username: str, items: list, total: float, p
     result = await _db.orders.insert_one({
         "user_id": user_id,
         "username": username,
-        "items": items, # items will now include the chosen size
+        "items": items,
         "total": total,
         "payment_method": payment_method,
         "status": "pending_payment",
+        "address": "", # <-- Added Address
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -80,6 +77,12 @@ async def get_order(order_id: str):
         return await _db.orders.find_one({"_id": ObjectId(order_id)})
     except Exception:
         return None
+
+async def update_order_address(order_id: str, address: str):
+    try:
+        await _db.orders.update_one({"_id": ObjectId(order_id)}, {"$set": {"address": address}})
+    except Exception:
+        pass
 
 async def update_order_status(order_id: str, status: str):
     try:
