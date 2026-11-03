@@ -79,22 +79,28 @@ async def cmd_start(message: Message, state: FSMContext):
 @router.callback_query(F.data == "menu_main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.edit_text(
-        "✨ **Main Menu** ✨\n\nWhat would you like to do?",
-        reply_markup=main_menu_kb(), parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(
+            "✨ **Main Menu** ✨\n\nWhat would you like to do?",
+            reply_markup=main_menu_kb(), parse_mode="Markdown"
+        )
+    except Exception:
+        await callback.message.answer("✨ **Main Menu** ✨", reply_markup=main_menu_kb())
     await callback.answer()
 
 @router.callback_query(F.data == "menu_help")
 async def menu_help(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "💬 **Help & Support**\n\n"
-        "• Tap 'Browse Dresses' to see our catalog.\n"
-        "• Tap 'My Orders' to check your order status.\n"
-        "• For any issues, contact our support: @your_support_username",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]),
-        parse_mode="Markdown"
-    )
+    try:
+        await callback.message.edit_text(
+            "💬 **Help & Support**\n\n"
+            "• Tap 'Browse Dresses' to see our catalog.\n"
+            "• Tap 'My Orders' to check your order status.\n"
+            "• For any issues, contact our support: @your_support_username",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
     await callback.answer()
 
 # ==========================================
@@ -104,7 +110,11 @@ async def menu_help(callback: CallbackQuery):
 async def browse_products(callback: CallbackQuery, state: FSMContext):
     products = await get_products()
     if not products:
-        await callback.message.edit_text("🛒 Our shop is currently empty.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]))
+        try:
+            await callback.message.edit_text("🛒 Our shop is currently empty.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]))
+        except Exception:
+            pass
+        await callback.answer()
         return
     
     await state.update_data(products=products, current_index=0)
@@ -140,6 +150,8 @@ async def prev_product(callback: CallbackQuery, state: FSMContext):
     if idx > 0:
         await state.update_data(current_index=idx - 1)
         await show_product(callback, state)
+    else:
+        await callback.answer()
 
 @router.callback_query(F.data == "prod_next")
 async def next_product(callback: CallbackQuery, state: FSMContext):
@@ -149,6 +161,8 @@ async def next_product(callback: CallbackQuery, state: FSMContext):
     if idx < len(products) - 1:
         await state.update_data(current_index=idx + 1)
         await show_product(callback, state)
+    else:
+        await callback.answer()
 
 # ==========================================
 # 3. CHECKOUT & SIZE SELECTION
@@ -182,6 +196,7 @@ async def size_selected(callback: CallbackQuery):
     
     await callback.message.delete()
     await process_order_start(callback.message, product_id, size=size)
+    await callback.answer()
 
 async def process_order_start(message: Message, product_id: str, size: str):
     product = await get_product(product_id)
@@ -202,57 +217,68 @@ async def process_order_start(message: Message, product_id: str, size: str):
 # --- COD FLOW (FIXED) ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
 async def checkout_cod(callback: CallbackQuery):
-    order_id = callback.data.split("_")[2]
-    order = await get_order(order_id)
-    
-    if not order:
-        await callback.answer("Order not found.", show_alert=True)
-        return
-
-    await update_order_status(order_id, "cod_pending")
-    
-    item = order['items'][0]
-    
-    # 1. Notify Owner
-    await callback.bot.send_message(
-        chat_id=OWNER_ID,
-        text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item['name']}\nSize: **{item.get('size', 'N/A')}**\nTotal: {order['total']} ETB\n\nDeliver and collect cash.",
-        reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
-    )
-    
-    # 2. Update User Message safely (Handle Photo vs Text messages)
     try:
-        await callback.message.edit_caption(
-            caption="✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
-            parse_mode="Markdown"
+        order_id = callback.data.split("_")[2]
+        order = await get_order(order_id)
+        
+        if not order:
+            await callback.answer("Order not found.", show_alert=True)
+            return
+
+        await update_order_status(order_id, "cod_pending")
+        
+        item = order['items'][0]
+        
+        # 1. Notify Owner
+        await callback.bot.send_message(
+            chat_id=OWNER_ID,
+            text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item['name']}\nSize: **{item.get('size', 'N/A')}**\nTotal: {order['total']} ETB\n\nDeliver and collect cash.",
+            reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
         )
-    except Exception:
-        await callback.message.edit_text(
-            "✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
-            parse_mode="Markdown"
-        )
-    
-    await callback.answer()
+        
+        # 2. Update User Message safely
+        try:
+            await callback.message.edit_caption(
+                caption="✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
+                parse_mode="Markdown"
+            )
+        except Exception:
+            try:
+                await callback.message.edit_text(
+                    "✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
+                    parse_mode="Markdown"
+                )
+            except Exception:
+                pass
+                
+        await callback.answer("Order placed successfully!")
+    except Exception as e:
+        print(f"Error in COD: {e}")
+        await callback.answer("An error occurred. Please try again.", show_alert=True)
 
 # --- PAY NOW FLOW ---
 @router.callback_query(F.data.startswith("checkout_pay_"))
 async def checkout_pay(callback: CallbackQuery, state: FSMContext):
-    order_id = callback.data.split("_")[2]
-    
     try:
-        await callback.message.edit_caption(
-            caption="💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.",
-            reply_markup=payment_method_kb(order_id), parse_mode="Markdown"
-        )
-    except Exception:
-        await callback.message.edit_text(
-            "💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.",
-            reply_markup=payment_method_kb(order_id), parse_mode="Markdown"
-        )
+        order_id = callback.data.split("_")[2]
         
-    await state.update_data(order_id=order_id)
-    await state.set_state(OrderState.waiting_screenshot)
-    await callback.answer()
+        try:
+            await callback.message.edit_caption(
+                caption="💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.",
+                reply_markup=payment_method_kb(order_id), parse_mode="Markdown"
+            )
+        except Exception:
+            await callback.message.edit_text(
+                "💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.",
+                reply_markup=payment_method_kb(order_id), parse_mode="Markdown"
+            )
+            
+        await state.update_data(order_id=order_id)
+        await state.set_state(OrderState.waiting_screenshot)
+        await callback.answer()
+    except Exception as e:
+        print(f"Error in Pay Now: {e}")
+        await callback.answer("An error occurred.", show_alert=True)
 
 @router.callback_query(F.data.startswith("pay_"))
 async def select_payment(callback: CallbackQuery, state: FSMContext):
@@ -297,7 +323,11 @@ async def receive_screenshot(message: Message, state: FSMContext):
 async def my_orders(callback: CallbackQuery):
     orders = await get_user_orders(callback.from_user.id)
     if not orders:
-        await callback.message.edit_text("📭 You have no orders yet.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse")]]))
+        try:
+            await callback.message.edit_text("📭 You have no orders yet.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse")]]))
+        except Exception:
+            pass
+        await callback.answer()
         return
         
     text = "📦 **Your Recent Orders:**\n\n"
@@ -307,7 +337,11 @@ async def my_orders(callback: CallbackQuery):
         size_text = f" (Size: {item.get('size')})" if item.get('size') else ""
         text += f"{status_emoji} `{o['_id']}` — {item.get('name', 'Item')}{size_text} — **{o['status'].replace('_', ' ').title()}**\n"
         
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]), parse_mode="Markdown")
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]), parse_mode="Markdown")
+    except Exception:
+        pass
+    await callback.answer()
 
 # ==========================================
 # 5. ADMIN: ADD PRODUCT (OWNER ONLY)
