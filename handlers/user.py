@@ -70,7 +70,6 @@ def size_selection_kb(sizes: list, product_id: str):
 def user_orders_kb(orders: list):
     buttons = []
     for o in orders:
-        # Only allow cancellation if it's pending
         if o['status'] in ["pending_details", "pending_payment", "cod_pending"]:
             buttons.append([InlineKeyboardButton(text=f"❌ Cancel Order #{str(o['_id'])[-6:]}", callback_data=f"cancel_order_{o['_id']}")])
     buttons.append([InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")])
@@ -309,7 +308,6 @@ async def checkout_cod(callback: CallbackQuery):
         
         item = order['items'][0]
         
-        # 1. Notify Owner with ALL details
         await callback.bot.send_message(
             chat_id=OWNER_ID,
             text=f"📦 **New COD Order!**\n"
@@ -323,7 +321,6 @@ async def checkout_cod(callback: CallbackQuery):
             reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
         )
         
-        # 2. Update User Message safely
         try:
             await callback.message.edit_caption(
                 caption="✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
@@ -417,7 +414,7 @@ async def my_orders(callback: CallbackQuery):
     orders = await get_user_orders(callback.from_user.id)
     if not orders:
         try:
-            await callback.message.edit_text("📭 You have no orders yet.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse")]]))
+            await callback.message.edit_text("📭 You have no active orders.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse")]]))
         except Exception:
             pass
         await callback.answer()
@@ -445,7 +442,7 @@ async def cancel_order(callback: CallbackQuery):
         return await callback.answer("Order not found.", show_alert=True)
         
     if order['status'] not in ["pending_details", "pending_payment", "cod_pending"]:
-        return await callback.answer("You cannot cancel this order anymore. It has already been processed.", show_alert=True)
+        return await callback.answer("You cannot cancel this order anymore.", show_alert=True)
 
     # Update status
     await update_order_status(order_id, "cancelled")
@@ -454,7 +451,19 @@ async def cancel_order(callback: CallbackQuery):
     for item in order.get("items", []):
         await increment_stock(item["product_id"], item.get("qty", 1))
         
-    await callback.message.edit_text("✅ **Order Cancelled Successfully.**\n\nThe items have been returned to stock.", reply_markup=main_menu_kb())
+    # Notify Owner instantly!
+    item_name = order['items'][0]['name']
+    await callback.bot.send_message(
+        chat_id=OWNER_ID,
+        text=f"🚨 **ORDER CANCELLED BY USER** 🚨\n\n"
+             f"Order: `{order_id}`\n"
+             f"User: @{callback.from_user.username}\n"
+             f"Item: {item_name}\n"
+             f"The stock has been returned automatically.",
+        parse_mode="Markdown"
+    )
+        
+    await callback.message.edit_text("✅ **Order Cancelled Successfully.**\n\nThe items have been returned to stock. You will not see this order in your list anymore.", reply_markup=main_menu_kb())
     await callback.answer()
 
 # ==========================================
@@ -545,7 +554,8 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     
     try:
         if CHANNEL_ID != 0:
-            await callback.bot.send_photo(chat_id=CHANNEL_ID, photo=data['photo'], caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
+            msg = await callback.bot.send_photo(chat_id=CHANNEL_ID, photo=data['photo'], caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
+            await update_product(data['product_id'], {"channel_message_id": msg.message_id})
             await callback.message.edit_text("✅ Product posted to the Channel!")
         else:
             await callback.message.edit_text("⚠️ CHANNEL_ID is not set.")
@@ -613,8 +623,18 @@ async def confirm_delete(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "confirm_delete_yes", EditProductState.confirm_delete)
 async def execute_delete(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    await delete_product(data['edit_id'])
-    await callback.message.edit_text("🗑 **Product Deleted Successfully.**")
+    product_id = data['edit_id']
+    product = await get_product(product_id)
+    
+    # Delete from Channel if it was posted
+    if product and product.get("channel_message_id"):
+        try:
+            await callback.bot.delete_message(chat_id=CHANNEL_ID, message_id=product["channel_message_id"])
+        except Exception as e:
+            print(f"Could not delete channel message: {e}")
+
+    await delete_product(product_id)
+    await callback.message.edit_text("🗑 **Product Deleted Successfully.** (Removed from Bot and Channel).")
     await state.clear()
     await callback.answer()
 
@@ -637,9 +657,30 @@ async def edit_field(callback: CallbackQuery, state: FSMContext):
 async def edit_photo_value(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID: return
     data = await state.get_data()
+    product_id = data['edit_id']
+    product = await get_product(product_id)
+    
     if data['edit_field'] == "photo":
-        await update_product(data['edit_id'], {"photo_file_id": message.photo[-1].file_id})
-        await message.answer("✅ Product photo updated successfully!")
+        new_photo = message.photo[-1].file_id
+        await update_product(product_id, {"photo_file_id": new_photo})
+        
+        # Update Channel Post (Delete + Repost)
+        if product and product.get("channel_message_id"):
+            try:
+                await message.bot.delete_message(chat_id=CHANNEL_ID, message_id=product["channel_message_id"])
+                
+                bot_info = await message.bot.get_me()
+                buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
+                channel_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]])
+                sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
+                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {product['price']} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
+                
+                msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=new_photo, caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
+                await update_product(product_id, {"channel_message_id": msg.message_id})
+            except Exception as e:
+                print(f"Failed to update channel photo: {e}")
+
+        await message.answer("✅ Product photo updated successfully! (Channel updated too)")
         await state.clear()
     else:
         await message.answer("❌ Please send text, not a photo.")
@@ -649,6 +690,7 @@ async def edit_text_value(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID: return
     data = await state.get_data()
     field = data['edit_field']
+    product_id = data['edit_id']
     
     if field == "photo":
         return await message.answer("❌ Please send a photo, not text.")
@@ -660,9 +702,31 @@ async def edit_text_value(message: Message, state: FSMContext):
         elif field == "stock": val = int(val)
         elif field == "sizes": val = [s.strip().upper() for s in val.split(",")]
         
-        await update_product(data['edit_id'], {field: val})
-        await message.answer(f"✅ Product updated! **{field.title()}** is now: `{val}`", parse_mode="Markdown")
-    except:
-        await message.answer("❌ Invalid value format. Please try again.")
+        await update_product(product_id, {field: val})
+        
+        # Update Channel Post Text
+        product = await get_product(product_id)
+        if product and product.get("channel_message_id"):
+            try:
+                sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
+                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {product['price']} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
+                
+                bot_info = await message.bot.get_me()
+                buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
+                channel_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]])
+                
+                await message.bot.edit_message_caption(
+                    chat_id=CHANNEL_ID,
+                    message_id=product["channel_message_id"],
+                    caption=caption,
+                    reply_markup=channel_kb,
+                    parse_mode="Markdown"
+                )
+            except Exception as e:
+                print(f"Failed to edit channel post: {e} (Message might be identical)")
+
+        await message.answer(f"✅ Product updated! **{field.title()}** is now: `{val}` (Channel updated)", parse_mode="Markdown")
+    except Exception as e:
+        await message.answer(f"❌ Invalid format or error: {e}. Please try again.")
         
     await state.clear()
