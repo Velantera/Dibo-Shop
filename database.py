@@ -16,8 +16,13 @@ def init_db_sync():
 # ==========================================
 async def add_product(name: str, price: float, description: str, photo_file_id: str, stock: int, sizes: list):
     result = await _db.products.insert_one({
-        "name": name, "price": price, "description": description,
-        "photo_file_id": photo_file_id, "stock": stock, "sizes": sizes,
+        "name": name,
+        "price": price,
+        "description": description,
+        "photo_file_id": photo_file_id,
+        "stock": stock,
+        "sizes": sizes,
+        "channel_message_id": None, # Tracks the channel post for editing/deleting
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -57,7 +62,6 @@ async def decrement_stock(product_id: str, qty: int = 1):
         pass
 
 async def increment_stock(product_id: str, qty: int = 1):
-    """Used when an order is cancelled"""
     try:
         await _db.products.update_one({"_id": ObjectId(product_id)}, {"$inc": {"stock": qty}})
     except Exception:
@@ -98,10 +102,16 @@ async def update_order_details(order_id: str, name: str, phone: str, address: st
 
 async def update_order_status(order_id: str, status: str):
     try:
-        await _db.orders.update_one({"_id": ObjectId(order_id)}, {"$set": {"status": status, "updated_at": datetime.utcnow()}})
+        await _db.orders.update_one(
+            {"_id": ObjectId(order_id)}, 
+            {"$set": {"status": status, "updated_at": datetime.utcnow()}}
+        )
     except Exception:
         pass
 
 async def get_user_orders(user_id: int):
-    cursor = _db.orders.find({"user_id": user_id}).sort("created_at", -1).limit(20)
+    # Hides cancelled orders from the user's "My Orders" list
+    cursor = _db.orders.find(
+        {"user_id": user_id, "status": {"$ne": "cancelled"}}
+    ).sort("created_at", -1).limit(20)
     return await cursor.to_list(length=20)
