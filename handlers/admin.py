@@ -1,13 +1,12 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from config import OWNER_ID
-from database import get_order, update_order_status, decrement_stock
+from database import get_order, update_order_status, decrement_stock, increment_stock
 
 router = Router()
 
 @router.callback_query(F.data.startswith("admin_"))
 async def admin_action(callback: CallbackQuery):
-    # Security check: Ensure only the OWNER can click these buttons
     if callback.from_user.id != OWNER_ID:
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
@@ -33,20 +32,27 @@ async def admin_action(callback: CallbackQuery):
     # --- DELIVER COD ---
     elif action == "delivered":
         await update_order_status(order_id, "delivered")
+        # Stock is only decremented upon delivery for COD
         for item in order.get("items", []):
             await decrement_stock(item["product_id"], item.get("qty", 1))
 
         await callback.bot.send_message(chat_id=user_id, text=f"🚚 **Order Delivered!**\nOrder `{order_id}` has been delivered. Thank you!", parse_mode="Markdown")
         await callback.message.edit_text(text=(callback.message.text or "") + "\n\n✅ **DELIVERED**", parse_mode="Markdown")
 
-    # --- REJECT ---
+    # --- REJECT / CANCEL ---
     elif action == "reject":
         await update_order_status(order_id, "rejected")
-        await callback.bot.send_message(chat_id=user_id, text=f"❌ Order `{order_id}` has been cancelled or payment rejected.", parse_mode="Markdown")
+        
+        # If it was already marked as paid/delivered, we should restore stock
+        if order['status'] in ["paid", "delivered"]:
+            for item in order.get("items", []):
+                await increment_stock(item["product_id"], item.get("qty", 1))
+
+        await callback.bot.send_message(chat_id=user_id, text=f"❌ Order `{order_id}` has been cancelled.", parse_mode="Markdown")
         
         if callback.message.caption:
             await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**", parse_mode="Markdown")
         else:
-            await callback.message.edit_text(text=callback.message.text + "\n\n❌ **REJECTED**", parse_mode="Markdown")
+            await callback.message.edit_text(text=(callback.message.text or "") + "\n\n❌ **REJECTED**", parse_mode="Markdown")
 
     await callback.answer("Action processed successfully.")
