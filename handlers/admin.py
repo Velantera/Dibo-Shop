@@ -16,31 +16,41 @@ async def admin_action(callback: CallbackQuery):
     user_id = order["user_id"]
 
     if action == "approve":
+        # 1. Update status
         await update_order_status(order_id, "paid")
-        # Decrement stock for each item
+        
+        # 2. Decrement stock safely
         for item in order.get("items", []):
             await decrement_stock(item["product_id"], item.get("qty", 1))
 
+        # 3. Notify User
         await callback.bot.send_message(
             chat_id=user_id,
-            text=f"🎉 **Payment Confirmed!**\nOrder `{order_id}` is now being processed. Thank you!",
+            text=f"🎉 **Payment Confirmed!**\n\nOrder `{order_id}` is now being processed. Thank you for shopping with us!",
             parse_mode="Markdown"
         )
+        
+        # 4. Update Admin Group Message
         await callback.message.edit_caption(
             caption=(callback.message.caption or "") + "\n\n✅ **APPROVED**",
             parse_mode="Markdown"
         )
 
     elif action == "reject":
+        # 1. Update status
         await update_order_status(order_id, "rejected")
+        
+        # 2. Notify User
         await callback.bot.send_message(
             chat_id=user_id,
-            text=f"❌ Payment for order `{order_id}` could not be verified. Please contact support.",
+            text=f"❌ Payment for order `{order_id}` could not be verified.\n\nPlease contact support if you believe this is an error.",
             parse_mode="Markdown"
         )
+        
+        # 3. Update Admin Group Message
         await callback.message.edit_caption(
             caption=(callback.message.caption or "") + "\n\n❌ **REJECTED**",
             parse_mode="Markdown"
         )
 
-    await callback.answer()
+    await callback.answer("Action processed successfully.")
