@@ -6,7 +6,7 @@ from config import PAYMENT_ACCOUNTS, OWNER_ID, CHANNEL_ID
 from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
-    get_order, update_order_address
+    get_order, update_order_details, increment_stock
 )
 from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb
 
@@ -14,6 +14,8 @@ router = Router()
 
 # --- FSM States ---
 class OrderState(StatesGroup):
+    waiting_name = State()
+    waiting_phone = State()
     waiting_address = State()
     waiting_screenshot = State()
 
@@ -34,7 +36,6 @@ class EditProductState(StatesGroup):
 
 # --- Keyboards ---
 def main_menu_kb():
-    # 2x2 Grid Layout with your Channel Link
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse"),
@@ -49,7 +50,8 @@ def main_menu_kb():
 def checkout_type_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="💵 Cash on Delivery (COD)", callback_data=f"checkout_cod_{order_id}")],
-        [InlineKeyboardButton(text="💳 Pay Now", callback_data=f"checkout_pay_{order_id}")]
+        [InlineKeyboardButton(text="💳 Pay Now", callback_data=f"checkout_pay_{order_id}")],
+        [InlineKeyboardButton(text="❌ Cancel Checkout", callback_data="menu_main")]
     ])
 
 def size_selection_kb(sizes: list, product_id: str):
@@ -63,6 +65,15 @@ def size_selection_kb(sizes: list, product_id: str):
     if row:
         buttons.append(row)
     buttons.append([InlineKeyboardButton(text="❌ Cancel", callback_data="menu_main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def user_orders_kb(orders: list):
+    buttons = []
+    for o in orders:
+        # Only allow cancellation if it's pending
+        if o['status'] in ["pending_details", "pending_payment", "cod_pending"]:
+            buttons.append([InlineKeyboardButton(text=f"❌ Cancel Order #{str(o['_id'])[-6:]}", callback_data=f"cancel_order_{o['_id']}")])
+    buttons.append([InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 # ==========================================
@@ -173,7 +184,7 @@ async def next_product(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
 
 # ==========================================
-# 3. CHECKOUT & SIZE SELECTION
+# 3. CHECKOUT FLOW (NAME -> PHONE -> ADDRESS)
 # ==========================================
 @router.callback_query(F.data.startswith("prod_buy_"))
 async def buy_product_inline(callback: CallbackQuery, state: FSMContext):
@@ -188,7 +199,7 @@ async def show_size_selection(message: Message, product_id: str, state: FSMConte
 
     sizes = product.get("sizes", [])
     if not sizes:
-        await prompt_for_address(message, product_id, size="One Size", state=state)
+        await prompt_for_name(message, product_id, size="One Size", state=state)
         return
 
     await message.answer(
@@ -203,11 +214,10 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
     product_id = parts[2]
     
     await callback.message.delete()
-    await prompt_for_address(callback.message, product_id, size, state)
+    await prompt_for_name(callback.message, product_id, size, state)
     await callback.answer()
 
-# --- PROMPT FOR ADDRESS ---
-async def prompt_for_address(message: Message, product_id: str, size: str, state: FSMContext):
+async def prompt_for_name(message: Message, product_id: str, size: str, state: FSMContext):
     product = await get_product(product_id)
     
     order_id = await create_order(
@@ -217,16 +227,44 @@ async def prompt_for_address(message: Message, product_id: str, size: str, state
     )
 
     await state.update_data(order_id=order_id)
-    await state.set_state(OrderState.waiting_address)
+    await state.set_state(OrderState.waiting_name)
 
     await message.answer(
-        "📍 **Delivery Address Required**\n\n"
+        "👤 **Step 1: Full Name**\n\n"
+        "Please type your **Full Name** so we know who to deliver to.\n\n"
+        "*Example: Abel Tesfaye*",
+        parse_mode="Markdown"
+    )
+
+@router.message(OrderState.waiting_name)
+async def receive_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+    if len(name) < 3:
+        return await message.answer("❌ Name is too short. Please send your full name.")
+    
+    await state.update_data(customer_name=name)
+    await message.answer(
+        "📞 **Step 2: Phone Number**\n\n"
+        "Please type your **Phone Number** (e.g., 0911XXXXXX).",
+        parse_mode="Markdown"
+    )
+    await state.set_state(OrderState.waiting_phone)
+
+@router.message(OrderState.waiting_phone)
+async def receive_phone(message: Message, state: FSMContext):
+    phone = message.text.strip()
+    if len(phone) < 9:
+        return await message.answer("❌ Invalid phone number. Please try again.")
+    
+    await state.update_data(phone_number=phone)
+    await message.answer(
+        "📍 **Step 3: Delivery Address**\n\n"
         "Please type your **Delivery Address** (Sub-city, Woreda, and a nearby landmark).\n\n"
         "*Example: Bole, Woreda 03, near Edna Mall*",
         parse_mode="Markdown"
     )
+    await state.set_state(OrderState.waiting_address)
 
-# --- RECEIVE ADDRESS & SHOW PAYMENT OPTIONS ---
 @router.message(OrderState.waiting_address)
 async def receive_address(message: Message, state: FSMContext):
     address = message.text.strip()
@@ -235,24 +273,26 @@ async def receive_address(message: Message, state: FSMContext):
     
     data = await state.get_data()
     order_id = data.get("order_id")
+    name = data.get("customer_name")
+    phone = data.get("phone_number")
     
-    await update_order_address(order_id, address)
+    await update_order_details(order_id, name, phone, address)
+    await update_order_status(order_id, "pending_payment")
     
     order = await get_order(order_id)
     item = order['items'][0]
     
     await message.answer(
-        f"📍 **Address Saved:**\n_{address}_\n\n"
+        f"✅ **Details Saved!**\n\n"
         f"🛒 **Order Summary**\n"
         f"Item: {item['name']}\n"
         f"Size: **{item.get('size')}**\n"
-        f"Total: **{order['total']} ETB**\n"
-        f"Order ID: `{order_id}`\n\n"
+        f"Total: **{order['total']} ETB**\n\n"
         f"👇 **How would you like to pay?**",
         reply_markup=checkout_type_kb(order_id),
         parse_mode="Markdown"
     )
-    await state.clear() # Clears the state so it doesn't loop
+    await state.clear()
 
 # --- COD FLOW ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
@@ -268,14 +308,22 @@ async def checkout_cod(callback: CallbackQuery):
         await update_order_status(order_id, "cod_pending")
         
         item = order['items'][0]
-        address = order.get('address', 'Not provided')
         
+        # 1. Notify Owner with ALL details
         await callback.bot.send_message(
             chat_id=OWNER_ID,
-            text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item['name']}\nSize: **{item.get('size', 'N/A')}**\nTotal: {order['total']} ETB\n\n📍 **Address:**\n{address}\n\nDeliver and collect cash.",
+            text=f"📦 **New COD Order!**\n"
+                 f"Order: `{order_id}`\n"
+                 f"👤 **Name:** {order.get('customer_name')}\n"
+                 f"📞 **Phone:** {order.get('phone_number')}\n"
+                 f"📍 **Address:** {order.get('address')}\n\n"
+                 f"👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n"
+                 f"💰 **Total:** {order['total']} ETB\n\n"
+                 f"Deliver and collect cash.",
             reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
         )
         
+        # 2. Update User Message safely
         try:
             await callback.message.edit_caption(
                 caption="✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
@@ -345,11 +393,16 @@ async def receive_screenshot(message: Message, state: FSMContext):
     order_id = data.get("order_id")
     order = await get_order(order_id)
     item = order['items'][0]
-    address = order.get('address', 'Not provided')
 
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
-        caption=f"🚨 **New Payment Proof** 🚨\nOrder: `{order_id}`\nUser: @{message.from_user.username or message.from_user.id}\nItem: {item['name']} (Size: {item.get('size', 'N/A')})\n\n📍 **Address:**\n{address}\n\nVerify the transaction then click below.",
+        caption=f"🚨 **New Payment Proof** 🚨\n"
+                f"Order: `{order_id}`\n"
+                f"👤 **Name:** {order.get('customer_name')}\n"
+                f"📞 **Phone:** {order.get('phone_number')}\n"
+                f"📍 **Address:** {order.get('address')}\n\n"
+                f"👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n\n"
+                f"Verify the transaction then click below.",
         parse_mode="Markdown", reply_markup=admin_verify_kb(order_id)
     )
 
@@ -357,7 +410,7 @@ async def receive_screenshot(message: Message, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# 4. MY ORDERS
+# 4. MY ORDERS & CANCELLATION
 # ==========================================
 @router.callback_query(F.data == "menu_orders")
 async def my_orders(callback: CallbackQuery):
@@ -375,12 +428,33 @@ async def my_orders(callback: CallbackQuery):
         status_emoji = "⏳" if "pending" in o['status'] else ("✅" if o['status'] == "paid" else ("🚚" if o['status'] == "delivered" else "❌"))
         item = o['items'][0] if o.get('items') else {}
         size_text = f" (Size: {item.get('size')})" if item.get('size') else ""
-        text += f"{status_emoji} `{o['_id']}` — {item.get('name', 'Item')}{size_text} — **{o['status'].replace('_', ' ').title()}**\n"
+        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{o['status'].replace('_', ' ').title()}**\n"
         
     try:
-        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]), parse_mode="Markdown")
+        await callback.message.edit_text(text, reply_markup=user_orders_kb(orders), parse_mode="Markdown")
     except Exception:
         pass
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("cancel_order_"))
+async def cancel_order(callback: CallbackQuery):
+    order_id = callback.data.split("_")[2]
+    order = await get_order(order_id)
+    
+    if not order or order['user_id'] != callback.from_user.id:
+        return await callback.answer("Order not found.", show_alert=True)
+        
+    if order['status'] not in ["pending_details", "pending_payment", "cod_pending"]:
+        return await callback.answer("You cannot cancel this order anymore. It has already been processed.", show_alert=True)
+
+    # Update status
+    await update_order_status(order_id, "cancelled")
+    
+    # Restore Stock
+    for item in order.get("items", []):
+        await increment_stock(item["product_id"], item.get("qty", 1))
+        
+    await callback.message.edit_text("✅ **Order Cancelled Successfully.**\n\nThe items have been returned to stock.", reply_markup=main_menu_kb())
     await callback.answer()
 
 # ==========================================
