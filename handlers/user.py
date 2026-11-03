@@ -14,7 +14,7 @@ router = Router()
 
 # --- FSM States ---
 class OrderState(StatesGroup):
-    waiting_address = State() # <-- NEW
+    waiting_address = State()
     waiting_screenshot = State()
 
 class AddProductState(StatesGroup):
@@ -34,10 +34,16 @@ class EditProductState(StatesGroup):
 
 # --- Keyboards ---
 def main_menu_kb():
+    # 2x2 Grid Layout with your Channel Link
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse")],
-        [InlineKeyboardButton(text="📦 My Orders", callback_data="menu_orders")],
-        [InlineKeyboardButton(text="💬 Help & Support", callback_data="menu_help")]
+        [
+            InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse"),
+            InlineKeyboardButton(text="📦 My Orders", callback_data="menu_orders")
+        ],
+        [
+            InlineKeyboardButton(text="💬 Help & Support", callback_data="menu_help"),
+            InlineKeyboardButton(text="📢 Join Channel", url="https://t.me/Dibo_Demo")
+        ]
     ])
 
 def checkout_type_kb(order_id: str):
@@ -69,7 +75,7 @@ async def cmd_start(message: Message, state: FSMContext):
     
     if len(args) > 1 and args[1].startswith("buy_"):
         product_id = args[1].replace("buy_", "")
-        await show_size_selection(message, product_id)
+        await show_size_selection(message, product_id, state)
         return
 
     await message.answer(
@@ -170,20 +176,19 @@ async def next_product(callback: CallbackQuery, state: FSMContext):
 # 3. CHECKOUT & SIZE SELECTION
 # ==========================================
 @router.callback_query(F.data.startswith("prod_buy_"))
-async def buy_product_inline(callback: CallbackQuery):
+async def buy_product_inline(callback: CallbackQuery, state: FSMContext):
     product_id = callback.data.split("_")[2]
     await callback.message.delete()
-    await show_size_selection(callback.message, product_id)
+    await show_size_selection(callback.message, product_id, state)
 
-async def show_size_selection(message: Message, product_id: str):
+async def show_size_selection(message: Message, product_id: str, state: FSMContext):
     product = await get_product(product_id)
     if not product or product.get("stock", 0) <= 0:
         return await message.answer("Sorry, this item is currently out of stock.")
 
     sizes = product.get("sizes", [])
     if not sizes:
-        # If no sizes, skip straight to address prompt
-        await prompt_for_address(message, product_id, size="One Size")
+        await prompt_for_address(message, product_id, size="One Size", state=state)
         return
 
     await message.answer(
@@ -192,50 +197,17 @@ async def show_size_selection(message: Message, product_id: str):
     )
 
 @router.callback_query(F.data.startswith("selectsize_"))
-async def size_selected(callback: CallbackQuery):
+async def size_selected(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
     size = parts[1]
     product_id = parts[2]
     
     await callback.message.delete()
-    await prompt_for_address(callback.message, product_id, size)
+    await prompt_for_address(callback.message, product_id, size, state)
     await callback.answer()
 
-# --- NEW: PROMPT FOR ADDRESS ---
-async def prompt_for_address(message: Message, product_id: str, size: str):
-    product = await get_product(product_id)
-    
-    # Create the order in the DB right away
-    order_id = await create_order(
-        user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
-        items=[{"product_id": str(product["_id"]), "name": product["name"], "price": product["price"], "qty": 1, "size": size}],
-        total=product["price"]
-    )
-
-    # Store order_id and product info in state so we can use it after they type the address
-    # Note: We need to pass the state along, so we use a hack here to set it in the next handler
-    
-    await message.answer(
-        "📍 **Delivery Address Required**\n\n"
-        "Please type your **Delivery Address** (Sub-city, Woreda, and a nearby landmark).\n\n"
-        "*Example: Bole, Woreda 03, near Edna Mall*",
-        parse_mode="Markdown"
-    )
-    
-    # We return the order_id so the next handler can use it
-    return order_id
-
-@router.message(OrderState.waiting_address) # We will set this state after size selection
-async def save_address(message: Message, state: FSMContext):
-    # This won't work directly unless we set the state properly. 
-    # Let's fix the flow below.
-    pass
-
-# --- FIXING THE FLOW ---
-# Because we need to set the state when we ask for the address, we update the prompt_for_address function
-# Replace the above prompt_for_address and save_address with this:
-
-async def prompt_for_address_updated(message: Message, product_id: str, size: str, state: FSMContext):
+# --- PROMPT FOR ADDRESS ---
+async def prompt_for_address(message: Message, product_id: str, size: str, state: FSMContext):
     product = await get_product(product_id)
     
     order_id = await create_order(
@@ -254,63 +226,12 @@ async def prompt_for_address_updated(message: Message, product_id: str, size: st
         parse_mode="Markdown"
     )
 
-# --- Update the size selection to use the new function ---
-@router.callback_query(F.data.startswith("selectsize_"))
-async def size_selected_updated(callback: CallbackQuery, state: FSMContext):
-    parts = callback.data.split("_")
-    size = parts[1]
-    product_id = parts[2]
-    
-    await callback.message.delete()
-    await prompt_for_address_updated(callback.message, product_id, size, state)
-    await callback.answer()
-
-# --- Update the show_size_selection to pass state ---
-async def show_size_selection_updated(message: Message, product_id: str, state: FSMContext):
-    product = await get_product(product_id)
-    if not product or product.get("stock", 0) <= 0:
-        return await message.answer("Sorry, this item is currently out of stock.")
-
-    sizes = product.get("sizes", [])
-    if not sizes:
-        await prompt_for_address_updated(message, product_id, size="One Size", state=state)
-        return
-
-    await message.answer(
-        f"📏 **Select a size for {product['name']}:**",
-        reply_markup=size_selection_kb(sizes, product_id)
-    )
-
-# --- Update the buy button to pass state ---
-@router.callback_query(F.data.startswith("prod_buy_"))
-async def buy_product_inline_updated(callback: CallbackQuery, state: FSMContext):
-    product_id = callback.data.split("_")[2]
-    await callback.message.delete()
-    await show_size_selection_updated(callback.message, product_id, state)
-
-# --- Update the start command to pass state ---
-@router.message(F.text.startswith("/start"))
-async def cmd_start_updated(message: Message, state: FSMContext):
-    await state.clear()
-    args = message.text.split()
-    
-    if len(args) > 1 and args[1].startswith("buy_"):
-        product_id = args[1].replace("buy_", "")
-        await show_size_selection_updated(message, product_id, state)
-        return
-
-    await message.answer(
-        "✨ **Welcome to Dibo Shop!** ✨\n\n"
-        "Discover our latest collection of premium dresses. Tap a button below to start shopping.",
-        reply_markup=main_menu_kb(), parse_mode="Markdown"
-    )
-
-# --- Handle the address input and show payment options ---
+# --- RECEIVE ADDRESS & SHOW PAYMENT OPTIONS ---
 @router.message(OrderState.waiting_address)
 async def receive_address(message: Message, state: FSMContext):
     address = message.text.strip()
-    if len(address) < 10:
-        return await message.answer("❌ Address is too short. Please provide Sub-city, Woreda, and Landmark.")
+    if len(address) < 5:
+        return await message.answer("❌ Address is too short. Please provide more details.")
     
     data = await state.get_data()
     order_id = data.get("order_id")
@@ -331,9 +252,9 @@ async def receive_address(message: Message, state: FSMContext):
         reply_markup=checkout_type_kb(order_id),
         parse_mode="Markdown"
     )
-    await state.clear()
+    await state.clear() # Clears the state so it doesn't loop
 
-# --- COD FLOW (FIXED WITH ADDRESS) ---
+# --- COD FLOW ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
 async def checkout_cod(callback: CallbackQuery):
     try:
@@ -349,14 +270,12 @@ async def checkout_cod(callback: CallbackQuery):
         item = order['items'][0]
         address = order.get('address', 'Not provided')
         
-        # 1. Notify Owner
         await callback.bot.send_message(
             chat_id=OWNER_ID,
             text=f"📦 **New COD Order!**\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item['name']}\nSize: **{item.get('size', 'N/A')}**\nTotal: {order['total']} ETB\n\n📍 **Address:**\n{address}\n\nDeliver and collect cash.",
             reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
         )
         
-        # 2. Update User Message safely
         try:
             await callback.message.edit_caption(
                 caption="✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
@@ -376,7 +295,7 @@ async def checkout_cod(callback: CallbackQuery):
         print(f"Error in COD: {e}")
         await callback.answer("An error occurred. Please try again.", show_alert=True)
 
-# --- PAY NOW FLOW (FIXED WITH ADDRESS) ---
+# --- PAY NOW FLOW ---
 @router.callback_query(F.data.startswith("checkout_pay_"))
 async def checkout_pay(callback: CallbackQuery, state: FSMContext):
     try:
