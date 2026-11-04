@@ -60,7 +60,7 @@ TEXTS = {
         "invalid_phone": "❌ Lakkoofsi bilbilaa sirrii miti. Irra deebi'aa barreessaa.",
         "enter_address": "📍 **Tarkaanfii 3: Teessoo Keessan**\n\nTeessoo keessan barreessaa (Ganda, Kutaa, fi mallattoo naannoo keessanii).\n\n*Fkn: Bole, Woreda 03, Edna Mall bira*",
         "invalid_address": "❌ Teessoon gabaabaa dha. Maaloo bal'inaan ibsaa.",
-        "order_summary": "✅ **Odeeffannoon Kuufameera!**\n\n🛒 **Cuunfaa Ajajaa Keessan**\Uffata: {name}\nSaayizii: **{size}**\nWaliigala: **{total} ETB**\n\n👇 **Akkamitti kaffaluu barbaaddu?**",
+        "order_summary": "✅ **Odeeffannoon Kuufameera!**\n\n🛒 **Cuunfaa Ajajaa Keessan**\nUffata: {name}\nSaayizii: **{size}**\nWaliigala: **{total} ETB**\n\n👇 **Akkamitti kaffaluu barbaaddu?**",
         "cod_confirmed": "✅ **Ajajni Keessan Mirkanaa'ee Jira!**\n\nMaallaqa harkaa filattan. Bilbila Isiniif Bilbilamu eeggadhaa.",
         "select_payment": "💳 **Mala Kaffaltii Filadhaa**\n\nBaankii filachuun odeeffannoo herregaa ilaalaa.",
         "payment_info": "💳 **Kaffaltii: {method}**\n\nMaaloo herrega kanarratti ergaa:\n`{account}`\n\nErga kaffaltanii booda, **Suuraa nagahee** asitti nuuf ergaa.",
@@ -68,7 +68,7 @@ TEXTS = {
         "no_orders": "📭 Ajaja socho'aa hin qabdu.",
         "btn_cancel_order": "❌ Ajaja Haqi #{id}",
         "orders_list": "📦 **Ajajawwan Keessan:**\n\n",
-        "order_cancelled": "✅ **Ajajni Milkaa'inaan Haqame.**\n\Uffanni gara kuusaatti deebi'ee jira.",
+        "order_cancelled": "✅ **Ajajni Milkaa'inaan Haqame.**\nUffanni gara kuusaatti deebi'ee jira.",
         "cannot_cancel": "Ajaja kana amma haquu hin dandeessan.",
     }
 }
