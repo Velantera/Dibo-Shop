@@ -9,6 +9,7 @@ from database import (
     get_order, update_order_details, increment_stock
 )
 from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb
+from locales import TEXTS
 
 router = Router()
 
@@ -34,27 +35,87 @@ class EditProductState(StatesGroup):
     waiting_value = State()
     confirm_delete = State()
 
-# --- Keyboards ---
-def main_menu_kb():
+# --- Helper ---
+async def get_lang(state: FSMContext) -> str:
+    data = await state.get_data()
+    return data.get("lang", "en")
+
+# ==========================================
+# 1. LANGUAGE SELECTION & START
+# ==========================================
+@router.message(F.text.startswith("/start"))
+async def cmd_start(message: Message, state: FSMContext):
+    await state.clear()
+    
+    # Language Selection Keyboard
+    lang_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
+            InlineKeyboardButton(text="🇪🇹 Afaan Oromoo", callback_data="setlang_om")
+        ]
+    ])
+    
+    await message.answer("🌐 Please choose your language / Maaloo afaan filadhu:", reply_markup=lang_kb)
+
+@router.callback_query(F.data.startswith("setlang_"))
+async def set_language(callback: CallbackQuery, state: FSMContext):
+    lang = callback.data.split("_")[1]
+    await state.update_data(lang=lang)
+    t = TEXTS[lang]
+    
+    await callback.message.edit_text(t["welcome"], reply_markup=main_menu_kb(lang))
+    await callback.answer()
+
+@router.callback_query(F.data == "menu_main")
+async def back_to_main(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
+    try:
+        await callback.message.edit_text(t["welcome"], reply_markup=main_menu_kb(lang))
+    except Exception:
+        await callback.message.answer(t["welcome"], reply_markup=main_menu_kb(lang))
+    await callback.answer()
+
+@router.callback_query(F.data == "menu_help")
+async def menu_help(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
+    try:
+        await callback.message.edit_text(
+            t["help_text"],
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]]),
+            parse_mode="Markdown"
+        )
+    except Exception:
+        pass
+    await callback.answer()
+
+# ==========================================
+# KEYBOARDS
+# ==========================================
+def main_menu_kb(lang: str):
+    t = TEXTS[lang]
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse"),
-            InlineKeyboardButton(text="📦 My Orders", callback_data="menu_orders")
+            InlineKeyboardButton(text=t["btn_browse"], callback_data="menu_browse"),
+            InlineKeyboardButton(text=t["btn_orders"], callback_data="menu_orders")
         ],
         [
-            InlineKeyboardButton(text="💬 Help & Support", callback_data="menu_help"),
-            InlineKeyboardButton(text="📢 Join Channel", url="https://t.me/Dibo_Demo")
+            InlineKeyboardButton(text=t["btn_help"], callback_data="menu_help"),
+            InlineKeyboardButton(text=t["btn_join"], url="https://t.me/Dibo_Demo")
         ]
     ])
 
-def checkout_type_kb(order_id: str):
+def checkout_type_kb(order_id: str, lang: str):
+    t = TEXTS[lang]
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💵 Cash on Delivery (COD)", callback_data=f"checkout_cod_{order_id}")],
-        [InlineKeyboardButton(text="💳 Pay Now", callback_data=f"checkout_pay_{order_id}")],
-        [InlineKeyboardButton(text="❌ Cancel Checkout", callback_data="menu_main")]
+        [InlineKeyboardButton(text=t["btn_cod"], callback_data=f"checkout_cod_{order_id}")],
+        [InlineKeyboardButton(text=t["btn_pay_now"], callback_data=f"checkout_pay_{order_id}")],
+        [InlineKeyboardButton(text=t["btn_cancel_checkout"], callback_data="menu_main")]
     ])
 
-def size_selection_kb(sizes: list, product_id: str):
+def size_selection_kb(sizes: list, product_id: str, lang: str):
+    t = TEXTS[lang]
     buttons = []
     row = []
     for size in sizes:
@@ -64,72 +125,29 @@ def size_selection_kb(sizes: list, product_id: str):
             row = []
     if row:
         buttons.append(row)
-    buttons.append([InlineKeyboardButton(text="❌ Cancel", callback_data="menu_main")])
+    buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def user_orders_kb(orders: list):
+def user_orders_kb(orders: list, lang: str):
+    t = TEXTS[lang]
     buttons = []
     for o in orders:
         if o['status'] in ["pending_details", "pending_payment", "cod_pending"]:
-            buttons.append([InlineKeyboardButton(text=f"❌ Cancel Order #{str(o['_id'])[-6:]}", callback_data=f"cancel_order_{o['_id']}")])
-    buttons.append([InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")])
+            buttons.append([InlineKeyboardButton(text=t["btn_cancel_order"].format(id=str(o['_id'])[-6:]), callback_data=f"cancel_order_{o['_id']}")])
+    buttons.append([InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-# ==========================================
-# 1. START & MAIN MENU
-# ==========================================
-@router.message(F.text.startswith("/start"))
-async def cmd_start(message: Message, state: FSMContext):
-    await state.clear()
-    args = message.text.split()
-    
-    if len(args) > 1 and args[1].startswith("buy_"):
-        product_id = args[1].replace("buy_", "")
-        await show_size_selection(message, product_id, state)
-        return
-
-    await message.answer(
-        "✨ **Welcome to Dibo Shop!** ✨\n\n"
-        "Discover our latest collection of premium dresses. Tap a button below to start shopping.",
-        reply_markup=main_menu_kb(), parse_mode="Markdown"
-    )
-
-@router.callback_query(F.data == "menu_main")
-async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    await state.clear()
-    try:
-        await callback.message.edit_text(
-            "✨ **Main Menu** ✨\n\nWhat would you like to do?",
-            reply_markup=main_menu_kb(), parse_mode="Markdown"
-        )
-    except Exception:
-        await callback.message.answer("✨ **Main Menu** ✨", reply_markup=main_menu_kb())
-    await callback.answer()
-
-@router.callback_query(F.data == "menu_help")
-async def menu_help(callback: CallbackQuery):
-    try:
-        await callback.message.edit_text(
-            "💬 **Help & Support**\n\n"
-            "• Tap 'Browse Dresses' to see our catalog.\n"
-            "• Tap 'My Orders' to check your order status.\n"
-            "• For any issues, contact our support: @your_support_username",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        pass
-    await callback.answer()
 
 # ==========================================
 # 2. BROWSE PRODUCTS
 # ==========================================
 @router.callback_query(F.data == "menu_browse")
 async def browse_products(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     products = await get_products()
     if not products:
         try:
-            await callback.message.edit_text("🛒 Our shop is currently empty.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]]))
+            await callback.message.edit_text(t["shop_empty"], reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]]))
         except Exception:
             pass
         await callback.answer()
@@ -139,6 +157,8 @@ async def browse_products(callback: CallbackQuery, state: FSMContext):
     await show_product(callback, state)
 
 async def show_product(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     data = await state.get_data()
     products = data.get("products", [])
     idx = data.get("current_index", 0)
@@ -148,11 +168,11 @@ async def show_product(callback: CallbackQuery, state: FSMContext):
     caption = f"👗 **{p['name']}**\n\n{p.get('description', '')}\n\n📏 **Sizes:** {sizes_text}\n💰 **Price:** {p['price']} ETB\n📦 **In Stock:** {p['stock']}"
     
     nav_buttons = []
-    if idx > 0: nav_buttons.append(InlineKeyboardButton(text="⬅️ Prev", callback_data="prod_prev"))
-    nav_buttons.append(InlineKeyboardButton(text="🛍 Buy Now", callback_data=f"prod_buy_{p['_id']}"))
-    if idx < len(products) - 1: nav_buttons.append(InlineKeyboardButton(text="Next ➡️", callback_data="prod_next"))
+    if idx > 0: nav_buttons.append(InlineKeyboardButton(text=t["btn_prev"], callback_data="prod_prev"))
+    nav_buttons.append(InlineKeyboardButton(text=t["btn_buy"], callback_data=f"prod_buy_{p['_id']}"))
+    if idx < len(products) - 1: nav_buttons.append(InlineKeyboardButton(text=t["btn_next"], callback_data="prod_next"))
         
-    kb = InlineKeyboardMarkup(inline_keyboard=[nav_buttons, [InlineKeyboardButton(text="🔙 Back to Menu", callback_data="menu_main")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[nav_buttons, [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]])
 
     try: await callback.message.delete()
     except: pass
@@ -192,9 +212,11 @@ async def buy_product_inline(callback: CallbackQuery, state: FSMContext):
     await show_size_selection(callback.message, product_id, state)
 
 async def show_size_selection(message: Message, product_id: str, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     product = await get_product(product_id)
     if not product or product.get("stock", 0) <= 0:
-        return await message.answer("Sorry, this item is currently out of stock.")
+        return await message.answer(t["out_of_stock"])
 
     sizes = product.get("sizes", [])
     if not sizes:
@@ -202,8 +224,8 @@ async def show_size_selection(message: Message, product_id: str, state: FSMConte
         return
 
     await message.answer(
-        f"📏 **Select a size for {product['name']}:**",
-        reply_markup=size_selection_kb(sizes, product_id)
+        t["select_size"].format(name=product['name']),
+        reply_markup=size_selection_kb(sizes, product_id, lang)
     )
 
 @router.callback_query(F.data.startswith("selectsize_"))
@@ -217,6 +239,8 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def prompt_for_name(message: Message, product_id: str, size: str, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     product = await get_product(product_id)
     
     order_id = await create_order(
@@ -228,47 +252,39 @@ async def prompt_for_name(message: Message, product_id: str, size: str, state: F
     await state.update_data(order_id=order_id)
     await state.set_state(OrderState.waiting_name)
 
-    await message.answer(
-        "👤 **Step 1: Full Name**\n\n"
-        "Please type your **Full Name** so we know who to deliver to.\n\n"
-        "*Example: Abel Tesfaye*",
-        parse_mode="Markdown"
-    )
+    await message.answer(t["enter_name"], parse_mode="Markdown")
 
 @router.message(OrderState.waiting_name)
 async def receive_name(message: Message, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     name = message.text.strip()
     if len(name) < 3:
-        return await message.answer("❌ Name is too short. Please send your full name.")
+        return await message.answer(t["name_too_short"])
     
     await state.update_data(customer_name=name)
-    await message.answer(
-        "📞 **Step 2: Phone Number**\n\n"
-        "Please type your **Phone Number** (e.g., 0911XXXXXX).",
-        parse_mode="Markdown"
-    )
+    await message.answer(t["enter_phone"], parse_mode="Markdown")
     await state.set_state(OrderState.waiting_phone)
 
 @router.message(OrderState.waiting_phone)
 async def receive_phone(message: Message, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     phone = message.text.strip()
     if len(phone) < 9:
-        return await message.answer("❌ Invalid phone number. Please try again.")
+        return await message.answer(t["invalid_phone"])
     
     await state.update_data(phone_number=phone)
-    await message.answer(
-        "📍 **Step 3: Delivery Address**\n\n"
-        "Please type your **Delivery Address** (Sub-city, Woreda, and a nearby landmark).\n\n"
-        "*Example: Bole, Woreda 03, near Edna Mall*",
-        parse_mode="Markdown"
-    )
+    await message.answer(t["enter_address"], parse_mode="Markdown")
     await state.set_state(OrderState.waiting_address)
 
 @router.message(OrderState.waiting_address)
 async def receive_address(message: Message, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     address = message.text.strip()
     if len(address) < 5:
-        return await message.answer("❌ Address is too short. Please provide more details.")
+        return await message.answer(t["invalid_address"])
     
     data = await state.get_data()
     order_id = data.get("order_id")
@@ -282,20 +298,17 @@ async def receive_address(message: Message, state: FSMContext):
     item = order['items'][0]
     
     await message.answer(
-        f"✅ **Details Saved!**\n\n"
-        f"🛒 **Order Summary**\n"
-        f"Item: {item['name']}\n"
-        f"Size: **{item.get('size')}**\n"
-        f"Total: **{order['total']} ETB**\n\n"
-        f"👇 **How would you like to pay?**",
-        reply_markup=checkout_type_kb(order_id),
+        t["order_summary"].format(name=item['name'], size=item.get('size'), total=order['total']),
+        reply_markup=checkout_type_kb(order_id, lang),
         parse_mode="Markdown"
     )
-    await state.clear()
+    # We do NOT clear state here yet, we need the language for the next step
 
 # --- COD FLOW ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
-async def checkout_cod(callback: CallbackQuery):
+async def checkout_cod(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     try:
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
@@ -305,33 +318,19 @@ async def checkout_cod(callback: CallbackQuery):
             return
 
         await update_order_status(order_id, "cod_pending")
-        
         item = order['items'][0]
         
         await callback.bot.send_message(
             chat_id=OWNER_ID,
-            text=f"📦 **New COD Order!**\n"
-                 f"Order: `{order_id}`\n"
-                 f"👤 **Name:** {order.get('customer_name')}\n"
-                 f"📞 **Phone:** {order.get('phone_number')}\n"
-                 f"📍 **Address:** {order.get('address')}\n\n"
-                 f"👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n"
-                 f"💰 **Total:** {order['total']} ETB\n\n"
-                 f"Deliver and collect cash.",
+            text=f"📦 **New COD Order!**\nOrder: `{order_id}`\n👤 **Name:** {order.get('customer_name')}\n📞 **Phone:** {order.get('phone_number')}\n📍 **Address:** {order.get('address')}\n\n👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n💰 **Total:** {order['total']} ETB\n\nDeliver and collect cash.",
             reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
         )
         
         try:
-            await callback.message.edit_caption(
-                caption="✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
-                parse_mode="Markdown"
-            )
+            await callback.message.edit_caption(caption=t["cod_confirmed"], parse_mode="Markdown")
         except Exception:
             try:
-                await callback.message.edit_text(
-                    "✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.", 
-                    parse_mode="Markdown"
-                )
+                await callback.message.edit_text(t["cod_confirmed"], parse_mode="Markdown")
             except Exception:
                 pass
                 
@@ -343,19 +342,15 @@ async def checkout_cod(callback: CallbackQuery):
 # --- PAY NOW FLOW ---
 @router.callback_query(F.data.startswith("checkout_pay_"))
 async def checkout_pay(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     try:
         order_id = callback.data.split("_")[2]
         
         try:
-            await callback.message.edit_caption(
-                caption="💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.",
-                reply_markup=payment_method_kb(order_id), parse_mode="Markdown"
-            )
+            await callback.message.edit_caption(caption=t["select_payment"], reply_markup=payment_method_kb(order_id), parse_mode="Markdown")
         except Exception:
-            await callback.message.edit_text(
-                "💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.",
-                reply_markup=payment_method_kb(order_id), parse_mode="Markdown"
-            )
+            await callback.message.edit_text(t["select_payment"], reply_markup=payment_method_kb(order_id), parse_mode="Markdown")
             
         await state.update_data(order_id=order_id)
         await state.set_state(OrderState.waiting_screenshot)
@@ -366,26 +361,24 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("pay_"))
 async def select_payment(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     _, method, order_id = callback.data.split("_", 2)
     account_info = PAYMENT_ACCOUNTS.get(method, "Account info not configured.")
     await update_order_status(order_id, "pending_payment")
 
     try:
-        await callback.message.edit_caption(
-            caption=f"💳 **Payment: {method.upper()}**\n\nPlease transfer to:\n`{account_info}`\n\nAfter payment, **send a screenshot** of the receipt here.",
-            parse_mode="Markdown"
-        )
+        await callback.message.edit_caption(caption=t["payment_info"].format(method=method.upper(), account=account_info), parse_mode="Markdown")
     except Exception:
-        await callback.message.edit_text(
-            f"💳 **Payment: {method.upper()}**\n\nPlease transfer to:\n`{account_info}`\n\nAfter payment, **send a screenshot** of the receipt here.",
-            parse_mode="Markdown"
-        )
+        await callback.message.edit_text(t["payment_info"].format(method=method.upper(), account=account_info), parse_mode="Markdown")
 
     await state.update_data(order_id=order_id, method=method)
     await callback.answer()
 
 @router.message(OrderState.waiting_screenshot, F.photo)
 async def receive_screenshot(message: Message, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     data = await state.get_data()
     order_id = data.get("order_id")
     order = await get_order(order_id)
@@ -393,34 +386,30 @@ async def receive_screenshot(message: Message, state: FSMContext):
 
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
-        caption=f"🚨 **New Payment Proof** 🚨\n"
-                f"Order: `{order_id}`\n"
-                f"👤 **Name:** {order.get('customer_name')}\n"
-                f"📞 **Phone:** {order.get('phone_number')}\n"
-                f"📍 **Address:** {order.get('address')}\n\n"
-                f"👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n\n"
-                f"Verify the transaction then click below.",
+        caption=f"🚨 **New Payment Proof** 🚨\nOrder: `{order_id}`\n👤 **Name:** {order.get('customer_name')}\n📞 **Phone:** {order.get('phone_number')}\n📍 **Address:** {order.get('address')}\n\n👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n\nVerify the transaction then click below.",
         parse_mode="Markdown", reply_markup=admin_verify_kb(order_id)
     )
 
-    await message.answer("✅ Screenshot received! Our team will verify it shortly.", reply_markup=main_menu_kb())
+    await message.answer(t["screenshot_received"], reply_markup=main_menu_kb(lang))
     await state.clear()
 
 # ==========================================
 # 4. MY ORDERS & CANCELLATION
 # ==========================================
 @router.callback_query(F.data == "menu_orders")
-async def my_orders(callback: CallbackQuery):
+async def my_orders(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     orders = await get_user_orders(callback.from_user.id)
     if not orders:
         try:
-            await callback.message.edit_text("📭 You have no active orders.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👗 Browse Dresses", callback_data="menu_browse")]]))
+            await callback.message.edit_text(t["no_orders"], reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t["btn_browse"], callback_data="menu_browse")]]))
         except Exception:
             pass
         await callback.answer()
         return
         
-    text = "📦 **Your Recent Orders:**\n\n"
+    text = t["orders_list"]
     for o in orders:
         status_emoji = "⏳" if "pending" in o['status'] else ("✅" if o['status'] == "paid" else ("🚚" if o['status'] == "delivered" else "❌"))
         item = o['items'][0] if o.get('items') else {}
@@ -428,13 +417,15 @@ async def my_orders(callback: CallbackQuery):
         text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{o['status'].replace('_', ' ').title()}**\n"
         
     try:
-        await callback.message.edit_text(text, reply_markup=user_orders_kb(orders), parse_mode="Markdown")
+        await callback.message.edit_text(text, reply_markup=user_orders_kb(orders, lang), parse_mode="Markdown")
     except Exception:
         pass
     await callback.answer()
 
 @router.callback_query(F.data.startswith("cancel_order_"))
-async def cancel_order(callback: CallbackQuery):
+async def cancel_order(callback: CallbackQuery, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
     order_id = callback.data.split("_")[2]
     order = await get_order(order_id)
     
@@ -442,33 +433,26 @@ async def cancel_order(callback: CallbackQuery):
         return await callback.answer("Order not found.", show_alert=True)
         
     if order['status'] not in ["pending_details", "pending_payment", "cod_pending"]:
-        return await callback.answer("You cannot cancel this order anymore.", show_alert=True)
+        return await callback.answer(t["cannot_cancel"], show_alert=True)
 
-    # Update status
     await update_order_status(order_id, "cancelled")
-    
-    # Restore Stock
     for item in order.get("items", []):
         await increment_stock(item["product_id"], item.get("qty", 1))
         
-    # Notify Owner instantly!
     item_name = order['items'][0]['name']
     await callback.bot.send_message(
         chat_id=OWNER_ID,
-        text=f"🚨 **ORDER CANCELLED BY USER** 🚨\n\n"
-             f"Order: `{order_id}`\n"
-             f"User: @{callback.from_user.username}\n"
-             f"Item: {item_name}\n"
-             f"The stock has been returned automatically.",
+        text=f"🚨 **ORDER CANCELLED BY USER** 🚨\n\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item_name}\nThe stock has been returned automatically.",
         parse_mode="Markdown"
     )
         
-    await callback.message.edit_text("✅ **Order Cancelled Successfully.**\n\nThe items have been returned to stock. You will not see this order in your list anymore.", reply_markup=main_menu_kb())
+    await callback.message.edit_text(t["order_cancelled"], reply_markup=main_menu_kb(lang))
     await callback.answer()
 
 # ==========================================
-# 5. ADMIN: ADD PRODUCT (OWNER ONLY)
+# 5. ADMIN: ADD PRODUCT (OWNER ONLY - ENGLISH ONLY)
 # ==========================================
+# We leave the Admin panel in English because it's just for YOU, the owner.
 @router.message(F.text == "/addproduct")
 async def cmd_addproduct(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID:
@@ -514,7 +498,7 @@ async def add_stock(message: Message, state: FSMContext):
     try:
         stock = int(message.text)
         await state.update_data(stock=stock)
-        await message.answer("✅ Stock saved. Now send the **Available Sizes**.\n\n*(Separate with commas, e.g., `S, M, L, XL` or `38, 40, 42`. Type `None` if it's one size.)*")
+        await message.answer("✅ Stock saved. Now send the **Available Sizes**.\n\n*(Separate with commas, e.g., `S, M, L`. Type `None` if it's one size.)*")
         await state.set_state(AddProductState.waiting_sizes)
     except:
         await message.answer("❌ Invalid number. Send the stock quantity again.")
@@ -626,7 +610,6 @@ async def execute_delete(callback: CallbackQuery, state: FSMContext):
     product_id = data['edit_id']
     product = await get_product(product_id)
     
-    # Delete from Channel if it was posted
     if product and product.get("channel_message_id"):
         try:
             await callback.bot.delete_message(chat_id=CHANNEL_ID, message_id=product["channel_message_id"])
@@ -646,7 +629,7 @@ async def edit_field(callback: CallbackQuery, state: FSMContext):
     if field == "photo":
         await callback.message.edit_text("📸 Send the **new Photo** for this product:")
     elif field == "sizes":
-        await callback.message.edit_text("Send the **new Sizes** (separated by commas, e.g., `S, M, L` or `38, 40`):")
+        await callback.message.edit_text("Send the **new Sizes** (separated by commas, e.g., `S, M, L`):")
     else:
         await callback.message.edit_text(f"Send the **new {field.title()}** value:")
         
@@ -664,7 +647,6 @@ async def edit_photo_value(message: Message, state: FSMContext):
         new_photo = message.photo[-1].file_id
         await update_product(product_id, {"photo_file_id": new_photo})
         
-        # Update Channel Post (Delete + Repost)
         if product and product.get("channel_message_id"):
             try:
                 await message.bot.delete_message(chat_id=CHANNEL_ID, message_id=product["channel_message_id"])
@@ -704,7 +686,6 @@ async def edit_text_value(message: Message, state: FSMContext):
         
         await update_product(product_id, {field: val})
         
-        # Update Channel Post Text
         product = await get_product(product_id)
         if product and product.get("channel_message_id"):
             try:
