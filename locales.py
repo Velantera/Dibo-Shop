@@ -14,7 +14,7 @@ TEXTS = {
         "btn_cod": "💵 Cash on Delivery (COD)",
         "btn_pay_now": "💳 Pay Now",
         "btn_cancel_checkout": "❌ Cancel Checkout",
-        "help_text": "💬 **Help & Support**\n\n• Tap 'Browse Dresses' to see our catalog.\n• Tap 'My Orders' to check your order status.\n• For any issues, contact our support: @your_support_username",
+        "help_text": "💬 **Help & Support**\n\n• Tap 'Browse Dresses' to see our catalog.\n• Tap 'My Orders' to check your order status.\n• For any issues, contact our support: @Diboratx",
         "shop_empty": "🛒 Our shop is currently empty.",
         "select_size": "📏 **Select a size for {name}:**",
         "out_of_stock": "Sorry, this item is currently out of stock.",
