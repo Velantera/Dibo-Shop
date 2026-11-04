@@ -83,9 +83,9 @@ TEXTS = {
         "delivery_time_1": "Guyyaa 1",
         "delivery_time_2": "Guyyaa 2",
         "delivery_time_3": "Guyyaa 3",
-        "delivery_notified": "📦 **Haala Geessuu!**\n\nAjajni keessan **{days}** keessatti isin ga'a.\n\nNu qunnamuuf bilbilaa: {phone}",
+        "delivery_notified": "📦 **Haala Geessuu!**\n\nAjajni keessan **{days}** keessatti isin bira ga'a.\n\nNu qunnamuuf lakkoofsa bilbilaa: {phone}",
         "mark_complete": "✅ Akka Xumurame Mirkaneessi (Maallaqa Fudhatame)",
-        "order_completed": "✅ **Ajajni Xumurameera!**\n\nDibo Shop fayyadamuuf galatoomaa!",
+        "order_completed": "✅ **Ajajni Xumurameera!**\n\nDibo Shop fayyadamuu keessan galatoomaa!",
         "owner_new_order": "📦 **Ajaja Haaraa!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Waliigala: {total} ETB\n💳 Kaffaltii: {payment}\n\n👇 **Yeroo Geessuu Filadhu:**",
         "owner_order_updated": "📦 **Ajajni Haaromsa'e!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Waliigala: {total} ETB\n💳 Kaffaltii: {payment}\n\n🚚 Geessuu: **{days}**\n\n👇 **Yeroo geessaa booda mirkaneessi:**",
     }
