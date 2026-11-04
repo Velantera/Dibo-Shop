@@ -70,7 +70,7 @@ TEXTS = {
         "enter_address": "📍 **Tarkaanfii 3: Teessoo Keessan**\n\nTeessoo keessan barreessaa (Ganda, Kutaa, fi mallattoo naannoo keessanii).\n\n*Fkn: Bole, Woreda 03, Edna Mall bira*",
         "invalid_address": "❌ Teessoon gabaabaa dha. Maaloo bal'inaan ibsaa.",
         "order_summary": "✅ **Odeeffannoon Kuufameera!**\n\n🛒 **Cuunfaa Ajajaa Keessan**\nUffata: {name}\nSaayizii: **{size}**\nGatii Uffataa: **{price} ETB**\nKaffaltii Geessuu: **300 ETB**\nWaliigala: **{total} ETB**\n\n👇 **Akkamitti kaffaluu barbaaddu?**",
-        "cod_confirmed": "✅ **Ajajni Keessan Mirkanaa'ee Jira!**\n\nMaallaqa harkaa filattan. Bilbila Isiniif Bilbilamu eeggadhaa.",
+        "cod_confirmed": "✅ **Ajajni Keessan Mirkanaa'ee Jira!**\n\nKaffaltii yeroo uffanni isin bira gahe kaffaltu. Bilbila Isiniif Bilbilamu eeggadhaa\nNu qunnamuuf lakkoofsa bilbilaa: {phone}",
         "select_payment": "💳 **Mala Kaffaltii Filadhaa**\n\nBaankii filachuun odeeffannoo herregaa ilaalaa.",
         "payment_info": "💳 **Kaffaltii: {method}**\n\nMaaloo waliigala **{total} ETB** herrega kanarratti ergaa:\n`{account}`\n\nErga kaffaltanii booda, **Suuraa nagahee** asitti nuuf ergaa.",
         "screenshot_received": "✅ Suuraan nagahee fudhatamee Jira! Gareen keenya mirkaneessaa jira. Nu eegaa.",
