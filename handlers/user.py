@@ -58,7 +58,6 @@ async def cmd_start(message: Message, state: FSMContext):
             f"🆔 **ID:** `{user.id}`"
         )
         
-        # Reminder Button
         reminder_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
         ])
@@ -77,9 +76,10 @@ async def cmd_start(message: Message, state: FSMContext):
     ])
     
     await message.answer(
-                "🌐 Please choose your language.\n\n"
-                "🌐 Maaloo Afaan Filadhaa.",
-                reply_markup=lang_kb)
+        "🌐 Please choose your language.\n\n"
+        "🌐 Maaloo Afaan Filadhaa.",
+        reply_markup=lang_kb
+    )
 
 @router.callback_query(F.data.startswith("setlang_"))
 async def set_language(callback: CallbackQuery, state: FSMContext):
@@ -87,7 +87,6 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
     await state.update_data(lang=lang, first_name=callback.from_user.first_name)
     t = TEXTS[lang]
     
-    # Pass the first name to the welcome message
     await callback.message.edit_text(t["welcome"].format(name=callback.from_user.first_name), reply_markup=main_menu_kb(lang))
     await callback.answer()
 
@@ -98,7 +97,6 @@ async def send_reminder(callback: CallbackQuery, state: FSMContext):
         
     target_user_id = int(callback.data.split("_")[1])
     
-    # Send the language selection to the target user
     lang_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
@@ -121,7 +119,6 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     
-    # Get first name from state or fallback
     data = await state.get_data()
     name = data.get("first_name", callback.from_user.first_name)
     
@@ -357,7 +354,6 @@ async def receive_address(message: Message, state: FSMContext):
         reply_markup=checkout_type_kb(order_id, lang),
         parse_mode="Markdown"
     )
-    # We do NOT clear state here yet, we need the language for the next step
 
 # --- COD FLOW ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
@@ -586,7 +582,14 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     bot_info = await callback.bot.get_me()
     buy_link = f"https://t.me/{bot_info.username}?start=buy_{data['product_id']}"
     
-    channel_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]])
+    # NEW: Two buttons on the same row
+    channel_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
+            InlineKeyboardButton(text="📞 Call Now", url="tel:+251927982723")
+        ]
+    ])
+    
     sizes_str = ", ".join(data.get('sizes', [])) if data.get('sizes') else "One Size"
     caption = f"✨ **{data['name']}** ✨\n\n{data['desc']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {data['price']} ETB\n📦 **Stock:** {data['stock']} items left!\n\n👇 Tap below to order directly."
     
@@ -707,7 +710,15 @@ async def edit_photo_value(message: Message, state: FSMContext):
                 
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
-                channel_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]])
+                
+                # NEW: Two buttons on the same row
+                channel_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
+                        InlineKeyboardButton(text="📞 Call Now", url="tel:+251927982723")
+                    ]
+                ])
+                
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
                 caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {product['price']} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
                 
@@ -748,7 +759,14 @@ async def edit_text_value(message: Message, state: FSMContext):
                 
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
-                channel_kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]])
+                
+                # NEW: Two buttons on the same row
+                channel_kb = InlineKeyboardMarkup(inline_keyboard=[
+                    [
+                        InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
+                        InlineKeyboardButton(text="📞 Call Now", url="tel:+251927982723")
+                    ]
+                ])
                 
                 await message.bot.edit_message_caption(
                     chat_id=CHANNEL_ID,
@@ -765,7 +783,6 @@ async def edit_text_value(message: Message, state: FSMContext):
         await message.answer(f"❌ Invalid format or error: {e}. Please try again.")
         
     await state.clear()
-
 
 # ==========================================
 # 7. CATCH-ALL HANDLER (Fallback for random text)
