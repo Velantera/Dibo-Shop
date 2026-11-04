@@ -48,8 +48,7 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
-    # 1. Notify Owner
-    if user.id != OWNER_ID: # Don't notify yourself when you test
+    if user.id != OWNER_ID: 
         display_name = f"@{user.username}" if user.username else f"<a href='tg://user?id={user.id}'>{user.id}</a>"
         notify_text = (
             f"🆕 **New User Started the Bot!**\n\n"
@@ -67,7 +66,6 @@ async def cmd_start(message: Message, state: FSMContext):
         except Exception as e:
             print(f"Failed to notify owner: {e}")
 
-    # 2. Show Language Selection
     lang_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
@@ -582,11 +580,11 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     bot_info = await callback.bot.get_me()
     buy_link = f"https://t.me/{bot_info.username}?start=buy_{data['product_id']}"
     
-    # NEW: Two buttons on the same row
+    # NEW: Two buttons on the same row (using phone_number instead of url)
     channel_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
-            InlineKeyboardButton(text="📞 Call Now", url="tel:+251927982723")
+            InlineKeyboardButton(text="📞 Call Now", phone_number="+251927982723")
         ]
     ])
     
@@ -711,11 +709,11 @@ async def edit_photo_value(message: Message, state: FSMContext):
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
                 
-                # NEW: Two buttons on the same row
+                # NEW: Two buttons on the same row (using phone_number)
                 channel_kb = InlineKeyboardMarkup(inline_keyboard=[
                     [
                         InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
-                        InlineKeyboardButton(text="📞 Call Now", url="tel:+251927982723")
+                        InlineKeyboardButton(text="📞 Call Now", phone_number="+251927982723")
                     ]
                 ])
                 
@@ -760,11 +758,11 @@ async def edit_text_value(message: Message, state: FSMContext):
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
                 
-                # NEW: Two buttons on the same row
+                # NEW: Two buttons on the same row (using phone_number)
                 channel_kb = InlineKeyboardMarkup(inline_keyboard=[
                     [
                         InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
-                        InlineKeyboardButton(text="📞 Call Now", url="tel:+251927982723")
+                        InlineKeyboardButton(text="📞 Call Now", phone_number="+251927982723")
                     ]
                 ])
                 
@@ -789,7 +787,6 @@ async def edit_text_value(message: Message, state: FSMContext):
 # ==========================================
 @router.message(F.text)
 async def catch_all_text(message: Message, state: FSMContext):
-    # If they send random text, reset their state and show the language menu
     await state.clear()
     
     lang_kb = InlineKeyboardMarkup(inline_keyboard=[
