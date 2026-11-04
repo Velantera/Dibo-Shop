@@ -398,11 +398,24 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             parse_mode="Markdown"
         )
         
+        # Add the Back to Menu button
+        user_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
+        ])
+        
         try:
-            await callback.message.edit_caption(caption=t["cod_confirmed"], parse_mode="Markdown")
+            await callback.message.edit_caption(
+                caption=t["cod_confirmed"].format(phone=OWNER_PHONE), 
+                parse_mode="Markdown",
+                reply_markup=user_kb
+            )
         except Exception:
             try:
-                await callback.message.edit_text(t["cod_confirmed"], parse_mode="Markdown")
+                await callback.message.edit_text(
+                    t["cod_confirmed"].format(phone=OWNER_PHONE), 
+                    parse_mode="Markdown",
+                    reply_markup=user_kb
+                )
             except Exception:
                 pass
                 
@@ -589,7 +602,7 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
             chat_id=user_id,
             text=t["delivery_notified"].format(days=delivery_text, phone=OWNER_PHONE),
             parse_mode="Markdown",
-            reply_markup=user_kb # <-- Added the button here
+            reply_markup=user_kb
         )
     except Exception as e:
         print(f"Failed to notify user: {e}")
@@ -655,7 +668,7 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
             chat_id=user_id,
             text=t["order_completed"],
             parse_mode="Markdown",
-            reply_markup=user_kb # <-- Added the button here
+            reply_markup=user_kb
         )
     except Exception as e:
         print(f"Failed to notify user: {e}")
