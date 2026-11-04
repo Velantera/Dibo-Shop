@@ -20,3 +20,19 @@ def cod_verify_kb(order_id: str):
         [InlineKeyboardButton(text="✅ Mark as Delivered (Collected Cash)", callback_data=f"admin_delivered_{order_id}")],
         [InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_reject_{order_id}")]
     ])
+
+# NEW: Delivery Timeframe Keyboard
+def delivery_time_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="1 Day", callback_data=f"deliver_1_{order_id}"),
+            InlineKeyboardButton(text="2 Days", callback_data=f"deliver_2_{order_id}"),
+            InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}")
+        ]
+    ])
+
+# NEW: Complete Order Keyboard
+def complete_order_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Mark as Completed", callback_data=f"admin_complete_{order_id}")]
+    ])
