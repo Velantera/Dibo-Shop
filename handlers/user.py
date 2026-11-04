@@ -8,10 +8,12 @@ from database import (
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, increment_stock
 )
-from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb
+from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb, delivery_time_kb, complete_order_kb
 from locales import TEXTS
 
 router = Router()
+DELIVERY_FEE = 300
+OWNER_PHONE = "+251927982723"
 
 # --- FSM States ---
 class OrderState(StatesGroup):
@@ -49,7 +51,6 @@ async def cmd_start(message: Message, state: FSMContext):
     user = message.from_user
     
     if user.id != OWNER_ID: 
-        # Formatting the display name for Markdown
         display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
         notify_text = (
             f"🆕 *New User Started the Bot!*\n\n"
@@ -63,7 +64,6 @@ async def cmd_start(message: Message, state: FSMContext):
         ])
         
         try:
-            # Changed to Markdown for proper formatting
             await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=reminder_kb, parse_mode="Markdown")
         except Exception as e:
             print(f"Failed to notify owner: {e}")
@@ -217,7 +217,8 @@ async def show_product(callback: CallbackQuery, state: FSMContext):
     p = products[idx]
     
     sizes_text = ", ".join(p.get("sizes", [])) if p.get("sizes") else "One Size"
-    caption = f"👗 **{p['name']}**\n\n{p.get('description', '')}\n\n📏 **Sizes:** {sizes_text}\n💰 **Price:** {p['price']} ETB\n📦 **In Stock:** {p['stock']}"
+    total_with_fee = p['price'] + DELIVERY_FEE
+    caption = f"👗 **{p['name']}**\n\n{p.get('description', '')}\n\n📏 **Sizes:** {sizes_text}\n💰 **Item Price:** {p['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **In Stock:** {p['stock']}"
     
     nav_buttons = []
     if idx > 0: nav_buttons.append(InlineKeyboardButton(text=t["btn_prev"], callback_data="prod_prev"))
@@ -295,10 +296,12 @@ async def prompt_for_name(message: Message, product_id: str, size: str, state: F
     t = TEXTS[lang]
     product = await get_product(product_id)
     
+    total_with_fee = product["price"] + DELIVERY_FEE
+    
     order_id = await create_order(
         user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
         items=[{"product_id": str(product["_id"]), "name": product["name"], "price": product["price"], "qty": 1, "size": size}],
-        total=product["price"]
+        total=total_with_fee
     )
 
     await state.update_data(order_id=order_id)
@@ -350,7 +353,12 @@ async def receive_address(message: Message, state: FSMContext):
     item = order['items'][0]
     
     await message.answer(
-        t["order_summary"].format(name=item['name'], size=item.get('size'), total=order['total']),
+        t["order_summary"].format(
+            name=item['name'], 
+            size=item.get('size'), 
+            price=item['price'], 
+            total=order['total']
+        ),
         reply_markup=checkout_type_kb(order_id, lang),
         parse_mode="Markdown"
     )
@@ -371,10 +379,23 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
         await update_order_status(order_id, "cod_pending")
         item = order['items'][0]
         
+        # Send to Owner with Delivery Time buttons
+        owner_msg = t["owner_new_order"].format(
+            order_id=order_id,
+            name=order.get('customer_name'),
+            phone=order.get('phone_number'),
+            address=order.get('address'),
+            item=item['name'],
+            size=item.get('size', 'N/A'),
+            total=order['total'],
+            payment="Cash on Delivery"
+        )
+        
         await callback.bot.send_message(
             chat_id=OWNER_ID,
-            text=f"📦 **New COD Order!**\nOrder: `{order_id}`\n👤 **Name:** {order.get('customer_name')}\n📞 **Phone:** {order.get('phone_number')}\n📍 **Address:** {order.get('address')}\n\n👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n💰 **Total:** {order['total']} ETB\n\nDeliver and collect cash.",
-            reply_markup=cod_verify_kb(order_id), parse_mode="Markdown"
+            text=owner_msg,
+            reply_markup=delivery_time_kb(order_id), 
+            parse_mode="Markdown"
         )
         
         try:
@@ -397,11 +418,20 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
     t = TEXTS[lang]
     try:
         order_id = callback.data.split("_")[2]
+        order = await get_order(order_id)
         
         try:
-            await callback.message.edit_caption(caption=t["select_payment"], reply_markup=payment_method_kb(order_id), parse_mode="Markdown")
+            await callback.message.edit_caption(
+                caption=t["select_payment"], 
+                reply_markup=payment_method_kb(order_id), 
+                parse_mode="Markdown"
+            )
         except Exception:
-            await callback.message.edit_text(t["select_payment"], reply_markup=payment_method_kb(order_id), parse_mode="Markdown")
+            await callback.message.edit_text(
+                t["select_payment"], 
+                reply_markup=payment_method_kb(order_id), 
+                parse_mode="Markdown"
+            )
             
         await state.update_data(order_id=order_id)
         await state.set_state(OrderState.waiting_screenshot)
@@ -416,12 +446,27 @@ async def select_payment(callback: CallbackQuery, state: FSMContext):
     t = TEXTS[lang]
     _, method, order_id = callback.data.split("_", 2)
     account_info = PAYMENT_ACCOUNTS.get(method, "Account info not configured.")
+    order = await get_order(order_id)
     await update_order_status(order_id, "pending_payment")
 
     try:
-        await callback.message.edit_caption(caption=t["payment_info"].format(method=method.upper(), account=account_info), parse_mode="Markdown")
+        await callback.message.edit_caption(
+            caption=t["payment_info"].format(
+                method=method.upper(), 
+                account=account_info,
+                total=order['total']
+            ), 
+            parse_mode="Markdown"
+        )
     except Exception:
-        await callback.message.edit_text(t["payment_info"].format(method=method.upper(), account=account_info), parse_mode="Markdown")
+        await callback.message.edit_text(
+            t["payment_info"].format(
+                method=method.upper(), 
+                account=account_info,
+                total=order['total']
+            ), 
+            parse_mode="Markdown"
+        )
 
     await state.update_data(order_id=order_id, method=method)
     await callback.answer()
@@ -435,10 +480,21 @@ async def receive_screenshot(message: Message, state: FSMContext):
     order = await get_order(order_id)
     item = order['items'][0]
 
+    owner_msg = t["owner_new_order"].format(
+        order_id=order_id,
+        name=order.get('customer_name'),
+        phone=order.get('phone_number'),
+        address=order.get('address'),
+        item=item['name'],
+        size=item.get('size', 'N/A'),
+        total=order['total'],
+        payment="Pay Now (Verify Screenshot)"
+    )
+
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
-        caption=f"🚨 **New Payment Proof** 🚨\nOrder: `{order_id}`\n👤 **Name:** {order.get('customer_name')}\n📞 **Phone:** {order.get('phone_number')}\n📍 **Address:** {order.get('address')}\n\n👗 **Item:** {item['name']} (Size: {item.get('size', 'N/A')})\n\nVerify the transaction then click below.",
-        parse_mode="Markdown", reply_markup=admin_verify_kb(order_id)
+        caption=owner_msg,
+        parse_mode="Markdown", reply_markup=delivery_time_kb(order_id)
     )
 
     await message.answer(t["screenshot_received"], reply_markup=main_menu_kb(lang))
@@ -501,7 +557,114 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # ==========================================
-# 5. ADMIN: ADD PRODUCT (OWNER ONLY - ENGLISH ONLY)
+# 5. ADMIN: DELIVERY & COMPLETION HANDLERS
+# ==========================================
+@router.callback_query(F.data.startswith("deliver_"))
+async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    parts = callback.data.split("_")
+    days = parts[1]  # 1, 2, or 3
+    order_id = parts[2]
+    
+    order = await get_order(order_id)
+    if not order:
+        return await callback.answer("Order not found.", show_alert=True)
+        
+    user_id = order['user_id']
+    item = order['items'][0]
+    
+    # Get user's language (default to English if unknown)
+    lang = "en" 
+    # In a real scenario, you'd fetch their saved language, but we'll default to EN for this notification
+    
+    t = TEXTS[lang]
+    delivery_text = t[f"delivery_time_{days}"]
+    
+    # 1. Notify User
+    try:
+        await callback.bot.send_message(
+            chat_id=user_id,
+            text=t["delivery_notified"].format(days=delivery_text, phone=OWNER_PHONE),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Failed to notify user: {e}")
+
+    # 2. Update Owner Message with Completion Button
+    owner_msg = t["owner_order_updated"].format(
+        order_id=order_id,
+        name=order.get('customer_name'),
+        phone=order.get('phone_number'),
+        address=order.get('address'),
+        item=item['name'],
+        size=item.get('size', 'N/A'),
+        total=order['total'],
+        payment=order.get('payment_method', 'COD'),
+        days=delivery_text
+    )
+    
+    if callback.message.caption:
+        await callback.message.edit_caption(
+            caption=owner_msg,
+            reply_markup=complete_order_kb(order_id),
+            parse_mode="Markdown"
+        )
+    else:
+        await callback.message.edit_text(
+            text=owner_msg,
+            reply_markup=complete_order_kb(order_id),
+            parse_mode="Markdown"
+        )
+        
+    await callback.answer(f"Delivery set to {days} day(s).")
+
+@router.callback_query(F.data.startswith("admin_complete_"))
+async def complete_order(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    order_id = callback.data.split("_")[2]
+    order = await get_order(order_id)
+    
+    if not order:
+        return await callback.answer("Order not found.", show_alert=True)
+        
+    await update_order_status(order_id, "delivered")
+    
+    # Decrement stock upon completion
+    for item in order.get("items", []):
+        from database import decrement_stock
+        await decrement_stock(item["product_id"], item.get("qty", 1))
+        
+    user_id = order['user_id']
+    t = TEXTS["en"] # Default to EN
+    
+    try:
+        await callback.bot.send_message(
+            chat_id=user_id,
+            text=t["order_completed"],
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Failed to notify user: {e}")
+        
+    if callback.message.caption:
+        await callback.message.edit_caption(
+            caption=callback.message.caption + "\n\n✅ **COMPLETED**",
+            parse_mode="Markdown"
+        )
+    else:
+        await callback.message.edit_text(
+            text=callback.message.text + "\n\n✅ **COMPLETED**",
+            parse_mode="Markdown"
+        )
+        
+    await callback.answer("Order marked as completed!")
+
+# ==========================================
+# 6. ADMIN: ADD PRODUCT (OWNER ONLY)
 # ==========================================
 @router.message(F.text == "/addproduct")
 async def cmd_addproduct(message: Message, state: FSMContext):
@@ -582,13 +745,13 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     bot_info = await callback.bot.get_me()
     buy_link = f"https://t.me/{bot_info.username}?start=buy_{data['product_id']}"
     
-    # Reverted to single Order Now button
     channel_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]
     ])
     
     sizes_str = ", ".join(data.get('sizes', [])) if data.get('sizes') else "One Size"
-    caption = f"✨ **{data['name']}** ✨\n\n{data['desc']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {data['price']} ETB\n📦 **Stock:** {data['stock']} items left!\n\n👇 Tap below to order directly."
+    total_with_fee = data['price'] + DELIVERY_FEE
+    caption = f"✨ **{data['name']}** ✨\n\n{data['desc']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {data['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {data['stock']} items left!\n\n👇 Tap below to order directly."
     
     try:
         if CHANNEL_ID != 0:
@@ -608,7 +771,7 @@ async def cancel_post(callback: CallbackQuery, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# 6. ADMIN: EDIT & DELETE PRODUCT (OWNER ONLY)
+# 7. ADMIN: EDIT & DELETE PRODUCT (OWNER ONLY)
 # ==========================================
 @router.message(F.text == "/editproduct")
 async def cmd_editproduct(message: Message, state: FSMContext):
@@ -708,13 +871,13 @@ async def edit_photo_value(message: Message, state: FSMContext):
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
                 
-                # Reverted to single Order Now button
                 channel_kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]
                 ])
                 
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
-                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {product['price']} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
+                total_with_fee = product['price'] + DELIVERY_FEE
+                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
                 
                 msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=new_photo, caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
                 await update_product(product_id, {"channel_message_id": msg.message_id})
@@ -749,12 +912,12 @@ async def edit_text_value(message: Message, state: FSMContext):
         if product and product.get("channel_message_id"):
             try:
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
-                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Price:** {product['price']} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
+                total_with_fee = product['price'] + DELIVERY_FEE
+                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
                 
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
                 
-                # Reverted to single Order Now button
                 channel_kb = InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]
                 ])
@@ -776,7 +939,7 @@ async def edit_text_value(message: Message, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# 7. CATCH-ALL HANDLER (Fallback for random text)
+# 8. CATCH-ALL HANDLER (Fallback for random text)
 # ==========================================
 @router.message(F.text)
 async def catch_all_text(message: Message, state: FSMContext):
