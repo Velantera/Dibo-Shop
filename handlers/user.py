@@ -298,7 +298,6 @@ async def prompt_for_name(message: Message, product_id: str, size: str, state: F
     
     total_with_fee = product["price"] + DELIVERY_FEE
     
-    # PASSING LANG HERE
     order_id = await create_order(
         user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
         items=[{"product_id": str(product["_id"]), "name": product["name"], "price": product["price"], "qty": 1, "size": size}],
@@ -580,11 +579,17 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
     t = TEXTS[lang]
     delivery_text = t[f"delivery_time_{days}"]
     
+    # Add the Back to Menu button for the user
+    user_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
+    ])
+    
     try:
         await callback.bot.send_message(
             chat_id=user_id,
             text=t["delivery_notified"].format(days=delivery_text, phone=OWNER_PHONE),
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=user_kb # <-- Added the button here
         )
     except Exception as e:
         print(f"Failed to notify user: {e}")
@@ -640,11 +645,17 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
     lang = order.get('language', 'en')
     t = TEXTS[lang]
     
+    # Add the Back to Menu button for the user
+    user_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
+    ])
+    
     try:
         await callback.bot.send_message(
             chat_id=user_id,
             text=t["order_completed"],
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=user_kb # <-- Added the button here
         )
     except Exception as e:
         print(f"Failed to notify user: {e}")
