@@ -47,7 +47,6 @@ async def get_lang(state: FSMContext) -> str:
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     
-    # Language Selection Keyboard
     lang_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
@@ -452,7 +451,6 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 5. ADMIN: ADD PRODUCT (OWNER ONLY - ENGLISH ONLY)
 # ==========================================
-# We leave the Admin panel in English because it's just for YOU, the owner.
 @router.message(F.text == "/addproduct")
 async def cmd_addproduct(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID:
@@ -711,3 +709,25 @@ async def edit_text_value(message: Message, state: FSMContext):
         await message.answer(f"❌ Invalid format or error: {e}. Please try again.")
         
     await state.clear()
+
+# ==========================================
+# 7. CATCH-ALL HANDLER (Fallback for random text)
+# ==========================================
+@router.message(F.text)
+async def catch_all_text(message: Message, state: FSMContext):
+    # If they send random text, reset their state and show the language menu
+    await state.clear()
+    
+    lang_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
+            InlineKeyboardButton(text="🇪🇹 Afaan Oromoo", callback_data="setlang_om")
+        ]
+    ])
+    
+    await message.answer(
+        "⚠️ **I didn't understand that.**\n"
+        "Please use the buttons below to navigate.\n\n"
+        "🌐 Maaloo button armaan gadii fayyadamuun na qajeelchi.",
+        reply_markup=lang_kb
+    )
