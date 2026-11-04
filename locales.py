@@ -1,7 +1,7 @@
 TEXTS = {
     "en": {
         "choose_lang": "🌐 Please choose your language:",
-        "welcome": "✨ **Welcome to Dibo Shop!** ✨\n\nDiscover our latest collection of premium dresses. Tap a button below to start shopping.",
+        "welcome": "✨ **Welcome to Dibo Shop! {name}!** ✨\n\nDiscover our latest collection of premium dresses. Tap a button below to start shopping.",
         "btn_browse": "👗 Browse Dresses",
         "btn_orders": "📦 My Orders",
         "btn_help": "💬 Help & Support",
@@ -37,7 +37,7 @@ TEXTS = {
     },
     "om": { # Afan Oromo
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
-        "welcome": "✨ **Baga nagaan gara Dibo Shop dhuftan!** ✨\n\nUffata haaraa fi miidhagoo filadhaa. Jalqabuuf button armaan gadii tuqaa.",
+        "welcome": "✨ **Baga nagaan gara Dibo Shop dhuftan! {name}!** ✨\n\nUffata haaraa fi miidhagoo filadhaa. Jalqabuuf button armaan gadii tuqaa.",
         "btn_browse": "👗 Uffata Ilaaluuf",
         "btn_orders": "📦 Ajaja Koo",
         "btn_help": "💬 Gargaarsa",
