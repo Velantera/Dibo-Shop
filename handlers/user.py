@@ -580,12 +580,9 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     bot_info = await callback.bot.get_me()
     buy_link = f"https://t.me/{bot_info.username}?start=buy_{data['product_id']}"
     
-    # Using callback data for the Call button
+    # Reverted to single Order Now button
     channel_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
-            InlineKeyboardButton(text="📞 Call Now", callback_data="show_phone_number")
-        ]
+        [InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]
     ])
     
     sizes_str = ", ".join(data.get('sizes', [])) if data.get('sizes') else "One Size"
@@ -709,12 +706,9 @@ async def edit_photo_value(message: Message, state: FSMContext):
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
                 
-                # Using callback data for the Call button
+                # Reverted to single Order Now button
                 channel_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
-                        InlineKeyboardButton(text="📞 Call Now", callback_data="show_phone_number")
-                    ]
+                    [InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]
                 ])
                 
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
@@ -758,12 +752,9 @@ async def edit_text_value(message: Message, state: FSMContext):
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
                 
-                # Using callback data for the Call button
+                # Reverted to single Order Now button
                 channel_kb = InlineKeyboardMarkup(inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="🛍 Order Now", url=buy_link),
-                        InlineKeyboardButton(text="📞 Call Now", callback_data="show_phone_number")
-                    ]
+                    [InlineKeyboardButton(text="🛍 Order Now", url=buy_link)]
                 ])
                 
                 await message.bot.edit_message_caption(
@@ -783,7 +774,7 @@ async def edit_text_value(message: Message, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# 7. CATCH-ALL & PHONE CALL HANDLER
+# 7. CATCH-ALL HANDLER (Fallback for random text)
 # ==========================================
 @router.message(F.text)
 async def catch_all_text(message: Message, state: FSMContext):
@@ -801,15 +792,3 @@ async def catch_all_text(message: Message, state: FSMContext):
         "🌐 Maaloo Afaan Filadhaa.",
         reply_markup=lang_kb
     )
-
-@router.callback_query(F.data == "show_phone_number")
-async def show_phone_number(callback: CallbackQuery):
-    # Show the phone number as clickable text using HTML formatting
-    await callback.message.answer(
-        "📞 **Contact Us Directly**\n\n"
-        "Tap the number below to make a direct phone call:\n\n"
-        "<a href='tel:+251927982723'>📞 +251 927 982 723</a>\n\n"
-        "_Or send us a message here on Telegram._",
-        parse_mode="HTML"
-    )
-    await callback.answer()
