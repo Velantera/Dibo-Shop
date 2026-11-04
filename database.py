@@ -22,7 +22,7 @@ async def add_product(name: str, price: float, description: str, photo_file_id: 
         "photo_file_id": photo_file_id,
         "stock": stock,
         "sizes": sizes,
-        "channel_message_id": None, # Tracks the channel post for editing/deleting
+        "channel_message_id": None,
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -70,7 +70,7 @@ async def increment_stock(product_id: str, qty: int = 1):
 # ==========================================
 # ORDERS
 # ==========================================
-async def create_order(user_id: int, username: str, items: list, total: float, payment_method: str = "pending"):
+async def create_order(user_id: int, username: str, items: list, total: float, payment_method: str = "pending", language: str = "en"):
     result = await _db.orders.insert_one({
         "user_id": user_id,
         "username": username,
@@ -81,6 +81,7 @@ async def create_order(user_id: int, username: str, items: list, total: float, p
         "customer_name": "",
         "phone_number": "",
         "address": "",
+        "language": language, # <-- ADDED THIS
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -110,7 +111,6 @@ async def update_order_status(order_id: str, status: str):
         pass
 
 async def get_user_orders(user_id: int):
-    # Hides cancelled orders from the user's "My Orders" list
     cursor = _db.orders.find(
         {"user_id": user_id, "status": {"$ne": "cancelled"}}
     ).sort("created_at", -1).limit(20)
