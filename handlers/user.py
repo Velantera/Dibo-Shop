@@ -46,7 +46,29 @@ async def get_lang(state: FSMContext) -> str:
 @router.message(F.text.startswith("/start"))
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
+    user = message.from_user
     
+    # 1. Notify Owner
+    if user.id != OWNER_ID: # Don't notify yourself when you test
+        display_name = f"@{user.username}" if user.username else f"<a href='tg://user?id={user.id}'>{user.id}</a>"
+        notify_text = (
+            f"🆕 **New User Started the Bot!**\n\n"
+            f"👤 **First Name:** {user.first_name}\n"
+            f"🔗 **Contact:** {display_name}\n"
+            f"🆔 **ID:** `{user.id}`"
+        )
+        
+        # Reminder Button
+        reminder_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
+        ])
+        
+        try:
+            await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=reminder_kb, parse_mode="HTML")
+        except Exception as e:
+            print(f"Failed to notify owner: {e}")
+
+    # 2. Show Language Selection
     lang_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
@@ -54,28 +76,56 @@ async def cmd_start(message: Message, state: FSMContext):
         ]
     ])
     
-    await message.answer(
-         "🌐 Please choose your language.\n\n"
-         "🌐 Maaloo Afaan Filadhaa.",
-        reply_markup=lang_kb)
+    await message.answer("🌐 Please choose your language / Maaloo afaan filadhu:", reply_markup=lang_kb)
 
 @router.callback_query(F.data.startswith("setlang_"))
 async def set_language(callback: CallbackQuery, state: FSMContext):
     lang = callback.data.split("_")[1]
-    await state.update_data(lang=lang)
+    await state.update_data(lang=lang, first_name=callback.from_user.first_name)
     t = TEXTS[lang]
     
-    await callback.message.edit_text(t["welcome"], reply_markup=main_menu_kb(lang))
+    # Pass the first name to the welcome message
+    await callback.message.edit_text(t["welcome"].format(name=callback.from_user.first_name), reply_markup=main_menu_kb(lang))
     await callback.answer()
+
+@router.callback_query(F.data.startswith("reminder_"))
+async def send_reminder(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    target_user_id = int(callback.data.split("_")[1])
+    
+    # Send the language selection to the target user
+    lang_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
+            InlineKeyboardButton(text="🇪🇹 Afaan Oromoo", callback_data="setlang_om")
+        ]
+    ])
+    
+    try:
+        await callback.bot.send_message(
+            chat_id=target_user_id, 
+            text="👋 **Reminder!**\n\nPlease choose your language to continue shopping:", 
+            reply_markup=lang_kb
+        )
+        await callback.answer("✅ Reminder sent successfully!", show_alert=True)
+    except Exception as e:
+        await callback.answer(f"❌ Failed to send reminder. User might have blocked the bot.", show_alert=True)
 
 @router.callback_query(F.data == "menu_main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
+    
+    # Get first name from state or fallback
+    data = await state.get_data()
+    name = data.get("first_name", callback.from_user.first_name)
+    
     try:
-        await callback.message.edit_text(t["welcome"], reply_markup=main_menu_kb(lang))
+        await callback.message.edit_text(t["welcome"].format(name=name), reply_markup=main_menu_kb(lang))
     except Exception:
-        await callback.message.answer(t["welcome"], reply_markup=main_menu_kb(lang))
+        await callback.message.answer(t["welcome"].format(name=name), reply_markup=main_menu_kb(lang))
     await callback.answer()
 
 @router.callback_query(F.data == "menu_help")
@@ -712,6 +762,7 @@ async def edit_text_value(message: Message, state: FSMContext):
         await message.answer(f"❌ Invalid format or error: {e}. Please try again.")
         
     await state.clear()
+
 
 # ==========================================
 # 7. CATCH-ALL HANDLER (Fallback for random text)
