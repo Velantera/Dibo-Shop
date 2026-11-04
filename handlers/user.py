@@ -54,7 +54,7 @@ async def cmd_start(message: Message, state: FSMContext):
         ]
     ])
     
-    await message.answer("
+    await message.answer(
          "🌐 Please choose your language.\n\n"
          "🌐 Maaloo Afaan Filadhaa.",
         reply_markup=lang_kb)
