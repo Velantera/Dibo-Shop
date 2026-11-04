@@ -49,12 +49,13 @@ async def cmd_start(message: Message, state: FSMContext):
     user = message.from_user
     
     if user.id != OWNER_ID: 
-        display_name = f"@{user.username}" if user.username else f"<a href='tg://user?id={user.id}'>{user.id}</a>"
+        # Formatting the display name for Markdown
+        display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
         notify_text = (
-            f"🆕 **New User Started the Bot!**\n\n"
-            f"👤 **First Name:** {user.first_name}\n"
-            f"🔗 **Contact:** {display_name}\n"
-            f"🆔 **ID:** `{user.id}`"
+            f"🆕 *New User Started the Bot!*\n\n"
+            f"👤 *First Name:* {user.first_name}\n"
+            f"🔗 *Contact:* {display_name}\n"
+            f"🆔 *ID:* `{user.id}`"
         )
         
         reminder_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -62,7 +63,8 @@ async def cmd_start(message: Message, state: FSMContext):
         ])
         
         try:
-            await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=reminder_kb, parse_mode="HTML")
+            # Changed to Markdown for proper formatting
+            await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=reminder_kb, parse_mode="Markdown")
         except Exception as e:
             print(f"Failed to notify owner: {e}")
 
