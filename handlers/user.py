@@ -54,7 +54,7 @@ async def cmd_start(message: Message, state: FSMContext):
         ]
     ])
     
-    await message.answer("🌐 Please choose your language / Maaloo afaan filadhu:", reply_markup=lang_kb)
+    await message.answer("🌐 Please choose your language / Maaloo Afaan Filadhaa:", reply_markup=lang_kb)
 
 @router.callback_query(F.data.startswith("setlang_"))
 async def set_language(callback: CallbackQuery, state: FSMContext):
@@ -726,8 +726,7 @@ async def catch_all_text(message: Message, state: FSMContext):
     ])
     
     await message.answer(
-        "⚠️ **I didn't understand that.**\n"
-        "Please use the buttons below to navigate.\n\n"
-        "🌐 Maaloo button armaan gadii fayyadamuun na qajeelchi.",
+        "Please choose your language.\n\n"
+        "🌐 Maaloo Afaan Filadhaa.",
         reply_markup=lang_kb
     )
