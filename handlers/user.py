@@ -6,7 +6,7 @@ from config import PAYMENT_ACCOUNTS, OWNER_ID, CHANNEL_ID
 from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
-    get_order, update_order_details, increment_stock
+    get_order, update_order_details, increment_stock, decrement_stock # Added decrement_stock here
 )
 from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb, delivery_time_kb, complete_order_kb
 from locales import TEXTS
@@ -379,7 +379,6 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
         await update_order_status(order_id, "cod_pending")
         item = order['items'][0]
         
-        # Send to Owner with Delivery Time buttons
         owner_msg = t["owner_new_order"].format(
             order_id=order_id,
             name=order.get('customer_name'),
@@ -418,7 +417,6 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
     t = TEXTS[lang]
     try:
         order_id = callback.data.split("_")[2]
-        order = await get_order(order_id)
         
         try:
             await callback.message.edit_caption(
@@ -575,14 +573,10 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
     user_id = order['user_id']
     item = order['items'][0]
     
-    # Get user's language (default to English if unknown)
     lang = "en" 
-    # In a real scenario, you'd fetch their saved language, but we'll default to EN for this notification
-    
     t = TEXTS[lang]
     delivery_text = t[f"delivery_time_{days}"]
     
-    # 1. Notify User
     try:
         await callback.bot.send_message(
             chat_id=user_id,
@@ -592,7 +586,6 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         print(f"Failed to notify user: {e}")
 
-    # 2. Update Owner Message with Completion Button
     owner_msg = t["owner_order_updated"].format(
         order_id=order_id,
         name=order.get('customer_name'),
@@ -633,13 +626,11 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
         
     await update_order_status(order_id, "delivered")
     
-    # Decrement stock upon completion
     for item in order.get("items", []):
-        from database import decrement_stock
         await decrement_stock(item["product_id"], item.get("qty", 1))
         
     user_id = order['user_id']
-    t = TEXTS["en"] # Default to EN
+    t = TEXTS["en"]
     
     try:
         await callback.bot.send_message(
