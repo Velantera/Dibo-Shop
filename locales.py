@@ -27,7 +27,7 @@ TEXTS = {
         "invalid_address": "❌ Address is too short. Please provide more details.",
         "order_summary": "✅ **Details Saved!**\n\n🛒 **Order Summary**\nItem: {name}\nSize: **{size}**\nItem Price: **{price} ETB**\nDelivery Fee: **300 ETB**\nTotal: **{total} ETB**\n\n👇 **How would you like to pay?**",
         "cod_confirmed": "✅ **Order Confirmed!**\n\nYou chose Cash on Delivery. Please wait for our delivery agent to contact you.\n\nIf you need to reach us, call: {phone}",
-        "select_payment": "💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.\n\n**Remaining Balance: {remaining} ETB**",
+        "select_payment": "💳 **Select Payment Method**\n\nPlease choose your bank to see the account details.\n\n**Remaining Payment: {remaining} ETB**",
         "payment_info": "💳 **Payment: {method}**\n\nPlease transfer the total of **{total} ETB** to:\n`{account}`\n\nAfter payment, **send a screenshot** of the receipt here.",
         "screenshot_received": "✅ Screenshot received! Our team will verify it shortly.",
         "no_orders": "📭 You have no active orders.",
