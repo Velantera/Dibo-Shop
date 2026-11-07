@@ -29,7 +29,6 @@ if not OWNER_ID:
     raise ValueError("OWNER_ID is not set. Add it to your .env file!")
 
 PAYMENT_ACCOUNTS = {
-    "telebirr": "Telebirr: 0911XXXXXX (Name: Your Name)",
-    "cbe": "CBE: 1000XXXXXXXX (Name: Your Name)",
-    "awash": "Awash Bank: 013XXXXXXXXX (Name: Your Name)",
+    "telebirr": "Telebirr: 0927982723 (Name: Dibora Diriba)",
+    "cbe": "CBE: 1000146782012 (Name: Dibora Diriba)",
 }
