@@ -215,7 +215,6 @@ def size_selection_kb(sizes: list, product_id: str, lang: str):
     t = TEXTS[lang]
     buttons = []
     for idx, size in enumerate(sizes):
-        # FIXED: Split by "|" and take the first part for the button text
         button_text = size.split("|")[0].strip() if "|" in size else size
         buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"selectsize_{idx}_{product_id}")])
     
@@ -339,7 +338,6 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
         
     raw_size = sizes[size_index]
     
-    # FIXED: Extract the full description if "|" was used
     if "|" in raw_size:
         size_text = raw_size.split("|")[1].strip()
     else:
@@ -349,23 +347,21 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
     await prompt_for_name(callback.message, product_id, size_text, state)
     await callback.answer()
 
+# UPDATED: Only save to state, do not create order yet
 async def prompt_for_name(message: Message, product_id: str, size: str, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     product = await get_product(product_id)
     
-    total_with_fee = product["price"] + DELIVERY_FEE
-    
-    order_id = await create_order(
-        user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
-        items=[{"product_id": str(product["_id"]), "name": product["name"], "price": product["price"], "qty": 1, "size": size}],
-        total=total_with_fee,
-        language=lang
+    # Save product details in state temporarily
+    await state.update_data(
+        product_id=str(product["_id"]),
+        product_name=product["name"],
+        product_price=product["price"],
+        selected_size=size
     )
-
-    await state.update_data(order_id=order_id)
+    
     await state.set_state(OrderState.waiting_name)
-
     await message.answer(t["enter_name"], parse_mode="Markdown")
 
 @router.message(OrderState.waiting_name)
@@ -402,12 +398,7 @@ async def receive_address(message: Message, state: FSMContext):
     if len(address) < 5:
         return await message.answer(t["invalid_address"])
     
-    data = await state.get_data()
-    order_id = data.get("order_id")
-    name = data.get("customer_name")
-    phone = data.get("phone_number")
-    
-    await update_order_details(order_id, name, phone, address)
+    await state.update_data(customer_address=address)
     
     await message.answer(
         t["pay_delivery_first"],
@@ -421,10 +412,21 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     data = await state.get_data()
-    order_id = data.get("order_id")
-    order = await get_order(order_id)
     
+    # NOW create the order in the database because they paid the delivery fee
+    total_with_fee = data["product_price"] + DELIVERY_FEE
+    order_id = await create_order(
+        user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
+        items=[{"product_id": data["product_id"], "name": data["product_name"], "price": data["product_price"], "qty": 1, "size": data["selected_size"]}],
+        total=total_with_fee,
+        language=lang
+    )
+    
+    # Update order with customer details
+    await update_order_details(order_id, data["customer_name"], data["phone_number"], data["customer_address"])
     await update_order_status(order_id, "pending_delivery_fee")
+    
+    order = await get_order(order_id)
     
     await message.bot.send_photo(
         chat_id=OWNER_ID, 
@@ -929,7 +931,6 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     
     sizes_str = ", ".join(data.get('sizes', [])) if data.get('sizes') else "One Size"
     total_with_fee = data['price'] + DELIVERY_FEE
-    # UPDATED: Added SHOP_ADDRESS to the caption
     caption = f"✨ **{data['name']}** ✨\n\n{data['desc']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {data['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {data['stock']} items left!\n\n{SHOP_ADDRESS}\n\n👇 Tap below to order directly."
     
     try:
@@ -1056,7 +1057,6 @@ async def edit_photo_value(message: Message, state: FSMContext):
                 
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
                 total_with_fee = product['price'] + DELIVERY_FEE
-                # UPDATED: Added SHOP_ADDRESS to the caption
                 caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n{SHOP_ADDRESS}\n\n👇 Tap below to order directly."
                 
                 msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=new_photo, caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
@@ -1093,7 +1093,6 @@ async def edit_text_value(message: Message, state: FSMContext):
             try:
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
                 total_with_fee = product['price'] + DELIVERY_FEE
-                # UPDATED: Added SHOP_ADDRESS to the caption
                 caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n{SHOP_ADDRESS}\n\n👇 Tap below to order directly."
                 
                 bot_info = await message.bot.get_me()
