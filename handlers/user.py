@@ -13,6 +13,7 @@ from keyboards import (
     delivery_time_kb, complete_order_kb, verify_delivery_fee_kb
 )
 from locales import TEXTS
+from datetime import datetime, timezone, timedelta
 
 router = Router()
 DELIVERY_FEE = 300
@@ -73,8 +74,6 @@ async def cmd_start(message: Message, state: FSMContext):
             print(f"Failed to notify owner: {e}")
 
     args = message.text.split()
-    
-    # Handle Channel Deep Link - Save the product ID in state!
     if len(args) > 1 and args[1].startswith("buy_"):
         product_id = args[1].replace("buy_", "")
         await state.update_data(deep_link_product=product_id)
@@ -98,16 +97,13 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
     await state.update_data(lang=lang, first_name=callback.from_user.first_name)
     t = TEXTS[lang]
     
-    # Check if the user arrived via a Deep Link from the channel
     data = await state.get_data()
     deep_link_product = data.get("deep_link_product")
     
     if deep_link_product:
-        # Redirect directly to the size selection for that specific product
         await callback.message.delete()
         await show_size_selection(callback.message, deep_link_product, state)
     else:
-        # Normal Start - Show Main Menu
         await callback.message.edit_text(
             t["welcome"].format(name=callback.from_user.first_name), 
             reply_markup=main_menu_kb(lang)
@@ -208,6 +204,7 @@ def user_orders_kb(orders: list, lang: str):
     t = TEXTS[lang]
     buttons = []
     for o in orders:
+        # We show the cancel button for all active states
         if o['status'] in ["pending_details", "pending_payment", "cod_pending", "pending_delivery_fee", "delivery_fee_paid"]:
             buttons.append([InlineKeyboardButton(text=t["btn_cancel_order"].format(id=str(o['_id'])[-6:]), callback_data=f"cancel_order_{o['_id']}")])
     buttons.append([InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")])
@@ -339,8 +336,10 @@ async def receive_name(message: Message, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     name = message.text.strip()
-    if len(name) < 3:
-        return await message.answer(t["name_too_short"])
+    
+    # NEW: Must have at least 2 words
+    if len(name.split()) < 2:
+        return await message.answer(t["invalid_name"])
     
     await state.update_data(customer_name=name)
     await message.answer(t["enter_phone"], parse_mode="Markdown")
@@ -351,7 +350,10 @@ async def receive_phone(message: Message, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     phone = message.text.strip()
-    if len(phone) < 9:
+    
+    # NEW: Strict phone validation
+    # Must be 10 digits, start with 09, and contain no spaces/letters
+    if not phone.isdigit() or len(phone) != 10 or not phone.startswith("09"):
         return await message.answer(t["invalid_phone"])
     
     await state.update_data(phone_number=phone)
@@ -373,7 +375,6 @@ async def receive_address(message: Message, state: FSMContext):
     
     await update_order_details(order_id, name, phone, address)
     
-    # Ask for Delivery Fee First
     await message.answer(
         t["pay_delivery_first"],
         parse_mode="Markdown"
@@ -391,7 +392,6 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     
     await update_order_status(order_id, "pending_delivery_fee")
     
-    # Send to Owner for verification (Now includes Name and Phone!)
     await message.bot.send_photo(
         chat_id=OWNER_ID, 
         photo=message.photo[-1].file_id,
@@ -422,10 +422,8 @@ async def verify_delivery_fee(callback: CallbackQuery):
     
     await update_order_status(order_id, "delivery_fee_paid")
     
-    # Deduct the delivery fee from the total to show the remaining amount
     remaining_balance = order['total'] - DELIVERY_FEE
     
-    # Notify user and ask for final payment method
     await callback.bot.send_message(
         chat_id=user_id,
         text=t["delivery_verified_msg"].format(remaining=remaining_balance),
@@ -433,7 +431,6 @@ async def verify_delivery_fee(callback: CallbackQuery):
         parse_mode="Markdown"
     )
     
-    # Update Owner message
     if callback.message.caption:
         await callback.message.edit_caption(
             caption=callback.message.caption + "\n\n✅ **DELIVERY FEE VERIFIED**",
@@ -479,7 +476,7 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
         await update_order_status(order_id, "cod_pending")
         item = order['items'][0]
         
-        # Notify Owner with delivery buttons
+        # Use the saved language for the owner message too, to avoid confusion
         owner_msg = t["owner_new_order"].format(
             order_id=order_id,
             name=order.get('customer_name'),
@@ -487,8 +484,10 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             address=order.get('address'),
             item=item['name'],
             size=item.get('size', 'N/A'),
-            total=order['total'],
-            payment="Cash on Delivery (Delivery Fee Paid)"
+            item_price=item['price'],
+            delivery_fee=DELIVERY_FEE,
+            remaining=order['total'] - DELIVERY_FEE,
+            payment="Cash on Delivery"
         )
         
         await callback.bot.send_message(
@@ -502,6 +501,7 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
         ])
         
+        # FIXED: Uses the user's language for the COD confirmation
         try:
             await callback.message.edit_caption(
                 caption=t["cod_confirmed"].format(phone=OWNER_PHONE), 
@@ -529,7 +529,6 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
         
-        # Amount remaining is total - delivery fee
         remaining_balance = order['total'] - DELIVERY_FEE
         
         try:
@@ -560,7 +559,6 @@ async def select_payment(callback: CallbackQuery, state: FSMContext):
     account_info = PAYMENT_ACCOUNTS.get(method, "Account info not configured.")
     order = await get_order(order_id)
     
-    # Amount remaining is total - delivery fee
     remaining_balance = order['total'] - DELIVERY_FEE
     await update_order_status(order_id, "pending_payment")
 
@@ -602,7 +600,9 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
         address=order.get('address'),
         item=item['name'],
         size=item.get('size', 'N/A'),
-        total=order['total'],
+        item_price=item['price'],
+        delivery_fee=DELIVERY_FEE,
+        remaining=order['total'] - DELIVERY_FEE,
         payment="Pay Now (Item Verified)"
     )
 
@@ -657,14 +657,37 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
     if order['status'] not in ["pending_details", "pending_payment", "cod_pending", "pending_delivery_fee", "delivery_fee_paid"]:
         return await callback.answer(t["cannot_cancel"], show_alert=True)
 
+    # NEW: Check if 24 hours have passed
+    # MongoDB stores datetime as UTC by default. We need to compare with current UTC time.
+    # Assuming 'created_at' is stored as a datetime object in the DB.
+    order_time = order.get('created_at')
+    if order_time:
+        now = datetime.now(timezone.utc)
+        # Make order_time timezone-aware if it isn't
+        if order_time.tzinfo is None:
+            order_time = order_time.replace(tzinfo=timezone.utc)
+            
+        if now - order_time > timedelta(hours=24):
+            return await callback.answer(t["cannot_cancel_24h"], show_alert=True)
+
     await update_order_status(order_id, "cancelled")
     for item in order.get("items", []):
         await increment_stock(item["product_id"], item.get("qty", 1))
         
     item_name = order['items'][0]['name']
+    
+    # UPDATED: Send more details to owner
+    cancel_msg = t["owner_cancel_notice"].format(
+        order_id=order_id,
+        name=order.get('customer_name'),
+        phone=order.get('phone_number'),
+        address=order.get('address'),
+        item=item_name
+    )
+    
     await callback.bot.send_message(
         chat_id=OWNER_ID,
-        text=f"🚨 **ORDER CANCELLED BY USER** 🚨\n\nOrder: `{order_id}`\nUser: @{callback.from_user.username}\nItem: {item_name}\nThe stock has been returned automatically.",
+        text=cancel_msg,
         parse_mode="Markdown"
     )
         
@@ -716,7 +739,7 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
         address=order.get('address'),
         item=item['name'],
         size=item.get('size', 'N/A'),
-        total=order['total'],
+        remaining=order['total'] - DELIVERY_FEE,
         payment=order.get('payment_method', 'COD'),
         days=delivery_text
     )
