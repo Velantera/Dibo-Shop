@@ -204,7 +204,6 @@ def user_orders_kb(orders: list, lang: str):
     t = TEXTS[lang]
     buttons = []
     for o in orders:
-        # We show the cancel button for all active states
         if o['status'] in ["pending_details", "pending_payment", "cod_pending", "pending_delivery_fee", "delivery_fee_paid"]:
             buttons.append([InlineKeyboardButton(text=t["btn_cancel_order"].format(id=str(o['_id'])[-6:]), callback_data=f"cancel_order_{o['_id']}")])
     buttons.append([InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")])
@@ -337,7 +336,6 @@ async def receive_name(message: Message, state: FSMContext):
     t = TEXTS[lang]
     name = message.text.strip()
     
-    # NEW: Must have at least 2 words
     if len(name.split()) < 2:
         return await message.answer(t["invalid_name"])
     
@@ -351,8 +349,6 @@ async def receive_phone(message: Message, state: FSMContext):
     t = TEXTS[lang]
     phone = message.text.strip()
     
-    # NEW: Strict phone validation
-    # Must be 10 digits, start with 09, and contain no spaces/letters
     if not phone.isdigit() or len(phone) != 10 or not phone.startswith("09"):
         return await message.answer(t["invalid_phone"])
     
@@ -467,16 +463,17 @@ async def reject_delivery_fee(callback: CallbackQuery):
 # --- COD FLOW ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
 async def checkout_cod(callback: CallbackQuery, state: FSMContext):
-    lang = await get_lang(state)
-    t = TEXTS[lang]
     try:
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
         
+        # FIXED: Fetch language from the database instead of FSM state
+        lang = order.get('language', 'en')
+        t = TEXTS[lang]
+        
         await update_order_status(order_id, "cod_pending")
         item = order['items'][0]
         
-        # Use the saved language for the owner message too, to avoid confusion
         owner_msg = t["owner_new_order"].format(
             order_id=order_id,
             name=order.get('customer_name'),
@@ -501,7 +498,7 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
         ])
         
-        # FIXED: Uses the user's language for the COD confirmation
+        # FIXED: Uses the correct language fetched from DB
         try:
             await callback.message.edit_caption(
                 caption=t["cod_confirmed"].format(phone=OWNER_PHONE), 
@@ -523,11 +520,13 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
 # --- PAY NOW FLOW ---
 @router.callback_query(F.data.startswith("checkout_pay_"))
 async def checkout_pay(callback: CallbackQuery, state: FSMContext):
-    lang = await get_lang(state)
-    t = TEXTS[lang]
     try:
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
+        
+        # FIXED: Fetch language from the database
+        lang = order.get('language', 'en')
+        t = TEXTS[lang]
         
         remaining_balance = order['total'] - DELIVERY_FEE
         
@@ -553,11 +552,14 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("pay_"))
 async def select_payment(callback: CallbackQuery, state: FSMContext):
-    lang = await get_lang(state)
-    t = TEXTS[lang]
     _, method, order_id = callback.data.split("_", 2)
-    account_info = PAYMENT_ACCOUNTS.get(method, "Account info not configured.")
     order = await get_order(order_id)
+    
+    # FIXED: Fetch language from the database
+    lang = order.get('language', 'en')
+    t = TEXTS[lang]
+    
+    account_info = PAYMENT_ACCOUNTS.get(method, "Account info not configured.")
     
     remaining_balance = order['total'] - DELIVERY_FEE
     await update_order_status(order_id, "pending_payment")
@@ -586,11 +588,14 @@ async def select_payment(callback: CallbackQuery, state: FSMContext):
 
 @router.message(OrderState.waiting_final_screenshot, F.photo)
 async def receive_final_screenshot(message: Message, state: FSMContext):
-    lang = await get_lang(state)
-    t = TEXTS[lang]
     data = await state.get_data()
     order_id = data.get("order_id")
     order = await get_order(order_id)
+    
+    # FIXED: Fetch language from the database
+    lang = order.get('language', 'en')
+    t = TEXTS[lang]
+    
     item = order['items'][0]
 
     owner_msg = t["owner_new_order"].format(
@@ -646,10 +651,12 @@ async def my_orders(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("cancel_order_"))
 async def cancel_order(callback: CallbackQuery, state: FSMContext):
-    lang = await get_lang(state)
-    t = TEXTS[lang]
     order_id = callback.data.split("_")[2]
     order = await get_order(order_id)
+    
+    # FIXED: Fetch language from the database
+    lang = order.get('language', 'en')
+    t = TEXTS[lang]
     
     if not order or order['user_id'] != callback.from_user.id:
         return await callback.answer("Order not found.", show_alert=True)
@@ -657,13 +664,9 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
     if order['status'] not in ["pending_details", "pending_payment", "cod_pending", "pending_delivery_fee", "delivery_fee_paid"]:
         return await callback.answer(t["cannot_cancel"], show_alert=True)
 
-    # NEW: Check if 24 hours have passed
-    # MongoDB stores datetime as UTC by default. We need to compare with current UTC time.
-    # Assuming 'created_at' is stored as a datetime object in the DB.
     order_time = order.get('created_at')
     if order_time:
         now = datetime.now(timezone.utc)
-        # Make order_time timezone-aware if it isn't
         if order_time.tzinfo is None:
             order_time = order_time.replace(tzinfo=timezone.utc)
             
@@ -676,7 +679,6 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
         
     item_name = order['items'][0]['name']
     
-    # UPDATED: Send more details to owner
     cancel_msg = t["owner_cancel_notice"].format(
         order_id=order_id,
         name=order.get('customer_name'),
