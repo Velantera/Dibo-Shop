@@ -1,7 +1,7 @@
 TEXTS = {
     "en": {
         "choose_lang": "🌐 Please choose your language:",
-        "welcome": "✨ **Hi {name} Welcome to Dibo Shop!** ✨\n\nDiscover our latest collection of premium dresses. Tap a button below to start shopping.",
+        "welcome": "✨ **Hi {name} Welcome to RO Fashion!** ✨\n\nDiscover our latest collection of premium dresses. Tap a button below to start shopping.",
         "btn_browse": "👗 Browse Dresses",
         "btn_orders": "📦 My Orders",
         "btn_help": "💬 Help & Support",
@@ -64,7 +64,7 @@ TEXTS = {
     },
     "om": {
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
-        "welcome": "✨ **Hi {name} Baga nagaan gara Dibo Shop dhuftan!** ✨\n\nUffata haaraa fi miidhagoo filadhaa. Jalqabuuf button armaan gadii tuqaa.",
+        "welcome": "✨ **Hi {name} Baga nagaan gara RO Fashion dhuftan!** ✨\n\nUffata haaraa fi miidhagoo filadhaa. Jalqabuuf button armaan gadii tuqaa.",
         "btn_browse": "👗 Uffata Ilaaluuf",
         "btn_orders": "📦 Ajaja Koo",
         "btn_help": "💬 Gargaarsaaf",
@@ -105,7 +105,7 @@ TEXTS = {
         "delivery_time_3": "Guyyaa 3",
         "delivery_notified": "📦 **Haala Geessuu!**\n\nAjajni keessan **{days}** keessatti isin bira ga'a.\n\nNu qunnamuuf lakkoofsa bilbilaa: {phone}",
         "mark_complete": "✅ Akka Xumurame Mirkaneessi (Maallaqa Fudhatame)",
-        "order_completed": "✅ **Ajajni Xumurameera!**\n\nDibo Shop fayyadamuu keessaniif galatoomaa!",
+        "order_completed": "✅ **Ajajni Xumurameera!**\n\nRO Fashion fayyadamuu keessaniif galatoomaa!",
         "owner_new_order": "📦 **Ajaja Haaraa!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Gatii Uffataa: {item_price} ETB\n🚚 Kaffaltii Geessuu: {delivery_fee} ETB (Kaffalameera)\n💵 **Hafte: {remaining} ETB**\n💳 Kaffaltii: {payment}\n\n👇 **Yeroo Geessuu Filadhu:**",
         "owner_order_updated": "📦 **Ajajni Haaromsa'e!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Hafte: {remaining} ETB\n💳 Kaffaltii: {payment}\n\n🚚 Geessuu: **{days}**\n\n👇 **Yeroo geessaa booda mirkaneessi:**",
         "pay_delivery_first": "⚠️ **Kaffaltii Geessuu (Delivery fee) Kaffaluu Barbaachisa**\n\nAjaja sobaa hambisuuf, maaloo dura kaffaltii geessuu(Delivery fee) **300 ETB** kaffalaa.\n\nHerrega:\n`Telebirr: 0927982723 (Maqaa: Dibora Diriba)`\n`CBE: 1000146782012 (Maqaa: Dibora Diriba)`\n\nErga kaffaltanii booda, **Suuraa nagahee** asitti nuuf ergaa.",
