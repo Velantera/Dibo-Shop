@@ -81,7 +81,7 @@ async def create_order(user_id: int, username: str, items: list, total: float, p
         "customer_name": "",
         "phone_number": "",
         "address": "",
-        "language": language, # <-- ADDED THIS
+        "language": language,
         "created_at": datetime.utcnow(),
     })
     return str(result.inserted_id)
@@ -115,3 +115,8 @@ async def get_user_orders(user_id: int):
         {"user_id": user_id, "status": {"$ne": "cancelled"}}
     ).sort("created_at", -1).limit(20)
     return await cursor.to_list(length=20)
+
+# NEW: Fetch all orders for the Admin Panel
+async def get_all_orders():
+    cursor = _db.orders.find({}).sort("created_at", -1).limit(50)
+    return await cursor.to_list(length=50)
