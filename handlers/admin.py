@@ -2,8 +2,12 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery
 from config import OWNER_ID
 from database import get_order, update_order_status, decrement_stock, increment_stock
+from locales import TEXTS
+from keyboards import main_menu_kb
 
 router = Router()
+DELIVERY_FEE = 300
+OWNER_PHONE = "+251927982723"
 
 @router.callback_query(F.data.startswith("admin_"))
 async def admin_action(callback: CallbackQuery):
@@ -19,6 +23,12 @@ async def admin_action(callback: CallbackQuery):
         return
 
     user_id = order["user_id"]
+    
+    # Fetch language from the database
+    lang = order.get('language', 'en')
+    t = TEXTS[lang]
+    
+    item = order['items'][0]
 
     # --- APPROVE PAY NOW ---
     if action == "approve":
@@ -48,7 +58,28 @@ async def admin_action(callback: CallbackQuery):
             for item in order.get("items", []):
                 await increment_stock(item["product_id"], item.get("qty", 1))
 
-        await callback.bot.send_message(chat_id=user_id, text=f"❌ Order `{order_id}` has been cancelled.", parse_mode="Markdown")
+        # Custom message for Item Payment Rejection
+        if order.get('status') == "delivery_fee_paid":
+            # The user has already paid the delivery fee. Use the specific message.
+            reject_msg = t["owner_pay_now_rejected"].format(
+                item=item['name'],
+                phone=OWNER_PHONE
+            )
+        else:
+            # Fallback for other rejection scenarios
+            reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
+
+        # Send message with Back to Menu button
+        user_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
+        ])
+        
+        await callback.bot.send_message(
+            chat_id=user_id, 
+            text=reject_msg, 
+            reply_markup=user_kb,
+            parse_mode="Markdown"
+        )
         
         if callback.message.caption:
             await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**", parse_mode="Markdown")
