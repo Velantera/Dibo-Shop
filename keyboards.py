@@ -1,4 +1,18 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from locales import TEXTS
+
+def main_menu_kb(lang: str):
+    t = TEXTS[lang]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=t["btn_browse"], callback_data="menu_browse"),
+            InlineKeyboardButton(text=t["btn_orders"], callback_data="menu_orders")
+        ],
+        [
+            InlineKeyboardButton(text=t["btn_help"], callback_data="menu_help"),
+            InlineKeyboardButton(text=t["btn_join"], url="https://t.me/Dibo_Demo")
+        ]
+    ])
 
 def payment_method_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -50,11 +64,9 @@ def pay_now_verify_kb(order_id: str):
         [InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}")]
     ])
 
-# NEW: Admin Orders Keyboard
 def admin_orders_kb(orders: list):
     buttons = []
     for o in orders:
-        # Using the last 6 characters of the order ID for display
         display_id = str(o['_id'])[-6:]
         status = o.get('status', 'unknown').replace('_', ' ').title()
         buttons.append([InlineKeyboardButton(
@@ -63,7 +75,6 @@ def admin_orders_kb(orders: list):
         )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# NEW: Admin Back to Orders Button
 def admin_back_orders_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")]
