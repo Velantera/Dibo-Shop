@@ -60,6 +60,7 @@ TEXTS = {
         "admin_order_details": "📦 **Order Details**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Total: {total} ETB\n💳 Payment: {payment}\n📊 Status: {status}",
         "btn_back_to_orders": "🔙 Back to Orders",
         "no_admin_orders": "📭 No orders found.",
+        "enter_sizes": "📏 **Available Sizes**\n\nPlease type the size details. You can separate standard sizes with commas (e.g., `S, M, L`) OR type detailed measurements for one size (e.g., `MEDIUM (SHOULDER: 39CM, BUST: 87 CM, WAIST: 90 CM, HIP: 100 CM, LENGTH: 85 CM)`).",
     },
     "om": {
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
@@ -122,5 +123,6 @@ TEXTS = {
         "admin_order_details": "📦 **Odeeffannoo Ajajaa**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Waliigala: {total} ETB\n💳 Kaffaltii: {payment}\n📊 Haala: {status}",
         "btn_back_to_orders": "🔙 Gara Ajajawwanii",
         "no_admin_orders": "📭 Ajajni hin argamne.",
+        "enter_sizes": "📏 **Saayizii Jiru**\n\nMaaloo odeeffannoo saayizii barreessaa. Saayizii idilee comma'n adda baasuu dandeessu (fkn, `S, M, L`) YKN saayizii tokkoof safartuu guutuu barreessuu dandeessu (fkn, `MEDIUM (SHOULDER: 39CM, BUST: 87 CM...)`).",
     }
 }
