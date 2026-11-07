@@ -54,6 +54,12 @@ TEXTS = {
         "order_rejected": "❌ **Order Rejected.**\n\nYour delivery fee could not be verified. Please contact support. {phone} ",
         "owner_cancel_notice": "🚨 **ORDER CANCELLED BY USER** 🚨\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item}\nThe stock has been returned automatically.",
         "owner_pay_now_proof": "🚨 **Item Payment Proof Received!** 🚨\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Item Price: {item_price} ETB\n🚚 Delivery Fee: {delivery_fee} ETB (Paid)\n💵 **Total to Verify: {remaining} ETB**\n💳 Payment Method: {payment}\n\n👇 **Set Delivery Time:**",
+        "owner_pay_now_rejected": "❌ **Payment Not Verified.**\n\nYour payment for **{item}** could not be verified. Please contact support at {phone} to resolve this.",
+        "btn_all_orders": "📋 All Orders",
+        "admin_orders_list": "📋 **All Orders:**\n\nSelect an order to view details.",
+        "admin_order_details": "📦 **Order Details**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Total: {total} ETB\n💳 Payment: {payment}\n📊 Status: {status}",
+        "btn_back_to_orders": "🔙 Back to Orders",
+        "no_admin_orders": "📭 No orders found.",
     },
     "om": {
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
@@ -110,5 +116,11 @@ TEXTS = {
         "order_rejected": "❌ **Ajajni Haqame.**\n\nKaffaltiin geessuu keessan mirkanaa'uu hin dandeenye. Maaloo nu qunnamaa. {phone} ",
         "owner_cancel_notice": "🚨 **AJJAJNI HAQAME (USER)** 🚨\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item}\nKuusni ofumaan deebi'ee jira.",
         "owner_pay_now_proof": "🚨 **Nagaheen Kaffaltii Uffataa Dhufeera!** 🚨\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Gatii Uffataa: {item_price} ETB\n🚚 Kaffaltii Geessuu: {delivery_fee} ETB (Kaffalameera)\n💵 **Waliigala Mirkaneessuu: {remaining} ETB**\n💳 Kaffaltii: {payment}\n\n👇 **Yeroo Geessuu Filadhu:**",
+        "owner_pay_now_rejected": "❌ **Kaffaltiin Hin Mirkanaane.**\n\nKaffaltiin uffata **{item}** keessan mirkanaa'uu hin dandeenye. Maaloo gargaarsa qunnamaa {phone}.",
+        "btn_all_orders": "📋 Ajajawwan Hunda",
+        "admin_orders_list": "📋 **Ajajawwan Hunda:**\n\nOdeeffannoo ilaaluuf ajaja filadhaa.",
+        "admin_order_details": "📦 **Odeeffannoo Ajajaa**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Waliigala: {total} ETB\n💳 Kaffaltii: {payment}\n📊 Haala: {status}",
+        "btn_back_to_orders": "🔙 Gara Ajajawwanii",
+        "no_admin_orders": "📭 Ajajni hin argamne.",
     }
 }
