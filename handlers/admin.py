@@ -1,9 +1,8 @@
 from aiogram import Router, F
-from aiogram.types import CallbackQuery
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from config import OWNER_ID
 from database import get_order, update_order_status, decrement_stock, increment_stock
 from locales import TEXTS
-from keyboards import main_menu_kb
 
 router = Router()
 DELIVERY_FEE = 300
@@ -69,7 +68,7 @@ async def admin_action(callback: CallbackQuery):
             # Fallback for other rejection scenarios
             reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
 
-        # Send message with Back to Menu button
+        # Build the keyboard manually here
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
         ])
