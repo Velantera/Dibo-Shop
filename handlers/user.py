@@ -210,13 +210,13 @@ def checkout_type_kb(order_id: str, lang: str):
         [InlineKeyboardButton(text=t["btn_cancel_checkout"], callback_data="menu_main")]
     ])
 
-# UPDATED: Use the index for the callback data to avoid BUTTON_DATA_INVALID
 def size_selection_kb(sizes: list, product_id: str, lang: str):
     t = TEXTS[lang]
     buttons = []
     for idx, size in enumerate(sizes):
-        # Pass the index (0, 1, 2...) instead of the full text
-        buttons.append([InlineKeyboardButton(text=size, callback_data=f"selectsize_{idx}_{product_id}")])
+        # Split by "|" and take the first part for the button text
+        button_text = size.split("|")[0].strip() if "|" in size else size
+        buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"selectsize_{idx}_{product_id}")])
     
     buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -322,7 +322,7 @@ async def show_size_selection(message: Message, product_id: str, state: FSMConte
         reply_markup=size_selection_kb(sizes, product_id, lang)
     )
 
-# UPDATED: Fetch the actual size text from the database using the index
+# UPDATED: Extract the full text (after the "|") when the user clicks
 @router.callback_query(F.data.startswith("selectsize_"))
 async def size_selected(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
@@ -337,7 +337,13 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
     if size_index >= len(sizes):
         return await callback.answer("Invalid size selection.", show_alert=True)
         
-    size_text = sizes[size_index]
+    raw_size = sizes[size_index]
+    
+    # Extract the full description if "|" was used, otherwise use the raw size
+    if "|" in raw_size:
+        size_text = raw_size.split("|")[1].strip()
+    else:
+        size_text = raw_size
     
     await callback.message.delete()
     await prompt_for_name(callback.message, product_id, size_text, state)
