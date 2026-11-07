@@ -10,7 +10,8 @@ from database import (
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
-    delivery_time_kb, complete_order_kb, verify_delivery_fee_kb, pay_now_verify_kb
+    delivery_time_kb, complete_order_kb, verify_delivery_fee_kb, pay_now_verify_kb,
+    admin_orders_kb, admin_back_orders_kb
 )
 from locales import TEXTS
 from datetime import datetime, timezone, timedelta
@@ -64,12 +65,14 @@ async def cmd_start(message: Message, state: FSMContext):
             f"🆔 *ID:* `{user.id}`"
         )
         
-        reminder_kb = InlineKeyboardMarkup(inline_keyboard=[
+        # Added All Orders button to the Owner's notification
+        owner_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
             [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
         ])
         
         try:
-            await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=reminder_kb, parse_mode="Markdown")
+            await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
         except Exception as e:
             print(f"Failed to notify owner: {e}")
 
@@ -136,7 +139,6 @@ async def send_reminder(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu_main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    # UPDATED: Clear state and reset to language selection
     await state.clear()
     
     lang_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -605,7 +607,6 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
     
     item = order['items'][0]
 
-    # UPDATED: Use the new owner_pay_now_proof format
     owner_msg = t["owner_pay_now_proof"].format(
         order_id=order_id,
         name=order.get('customer_name'),
@@ -619,7 +620,6 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
         payment="Pay Now (Item Verified)"
     )
 
-    # UPDATED: Use the new keyboard with Delivery Time and Reject button
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
         caption=owner_msg,
@@ -1093,7 +1093,65 @@ async def edit_text_value(message: Message, state: FSMContext):
     await state.clear()
 
 # ==========================================
-# 8. CATCH-ALL HANDLER (Fallback for random text)
+# 8. ADMIN: ALL ORDERS HANDLER
+# ==========================================
+@router.callback_query(F.data == "admin_all_orders")
+async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    # Fetch all orders from database
+    orders = await get_all_orders()
+    
+    if not orders:
+        try:
+            await callback.message.edit_text("📭 No orders found.", reply_markup=main_menu_kb("en"))
+        except Exception:
+            pass
+        return await callback.answer()
+        
+    text = "📋 **All Orders:**\n\nSelect an order to view details."
+    kb = admin_orders_kb(orders)
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb, parse_mode="Markdown")
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("admin_view_order_"))
+async def admin_view_order(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    order_id = callback.data.split("_")[3]
+    order = await get_order(order_id)
+    
+    if not order:
+        return await callback.answer("Order not found.", show_alert=True)
+        
+    item = order['items'][0]
+    
+    text = (
+        f"📦 **Order Details**\n\n"
+        f"🆔 Order: `{order_id}`\n"
+        f"👤 Name: {order.get('customer_name')}\n"
+        f"📞 Phone: {order.get('phone_number')}\n"
+        f"📍 Address: {order.get('address')}\n\n"
+        f"👗 Item: {item['name']} (Size: {item.get('size', 'N/A')})\n"
+        f"💰 Total: {order['total']} ETB\n"
+        f"💳 Payment: {order.get('payment_method', 'Unknown')}\n"
+        f"📊 Status: {order.get('status', 'Unknown').replace('_', ' ').title()}"
+    )
+    
+    try:
+        await callback.message.edit_text(text, reply_markup=admin_back_orders_kb(), parse_mode="Markdown")
+    except Exception:
+        await callback.message.answer(text, reply_markup=admin_back_orders_kb(), parse_mode="Markdown")
+    await callback.answer()
+
+# ==========================================
+# 9. CATCH-ALL HANDLER (Fallback for random text)
 # ==========================================
 @router.message(F.text)
 async def catch_all_text(message: Message, state: FSMContext):
