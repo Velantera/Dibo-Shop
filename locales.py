@@ -47,7 +47,7 @@ TEXTS = {
         "owner_order_updated": "📦 **Order Updated!**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Remaining to Collect: {remaining} ETB\n💳 Payment: {payment}\n\n🚚 Delivery: **{days}**\n\n👇 **Mark as Completed when delivered:**",
         "pay_delivery_first": "⚠️ **Delivery Fee Required**\n\nTo prevent fake orders, please pay the delivery fee of **300 ETB** first.\n\nTransfer to:\n`Telebirr: 0927982723 (Name: Dibora Diriba)`\n`CBE: 1000146782012 (Name: Dibora Diriba)`\n\nAfter payment, **send a screenshot** of the receipt here.",
         "delivery_fee_proof_sent": "✅ Screenshot received! Please wait while we verify your delivery fee. Once verified, you will be asked to choose how to pay for the item.",
-        "delivery_verified_msg": "✅ **Delivery Fee Verified!**\n\nYour delivery fee of 300 ETB has been received. The remaining balance for your item is **{remaining} ETB**.\n\nHow would you like to pay for the item?",
+        "delivery_verified_msg": "✅ **Delivery Fee Verified!**\n\nYour delivery fee of 300 ETB has been received. The remaining payment for your item is **{remaining} ETB**.\n\nHow would you like to pay for the item?",
         "owner_delivery_proof": "🚨 **Delivery Fee Payment Proof** 🚨\nOrder: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\nUser: @{username}\n\nIf the 300 ETB is in your account, click Verify.\n\n👇",
         "owner_verify_fee": "✅ Verify Delivery Fee",
         "owner_reject_fee": "❌ Reject Order",
