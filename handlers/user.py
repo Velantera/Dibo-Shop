@@ -257,7 +257,9 @@ async def show_product(callback: CallbackQuery, state: FSMContext):
     idx = data.get("current_index", 0)
     p = products[idx]
     
+    # Display the FULL text in the channel/browse
     sizes_text = ", ".join(p.get("sizes", [])) if p.get("sizes") else "One Size"
+    
     total_with_fee = p['price'] + DELIVERY_FEE
     caption = f"👗 **{p['name']}**\n\n{p.get('description', '')}\n\n📏 **Sizes:** {sizes_text}\n💰 **Item Price:** {p['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **In Stock:** {p['stock']}"
     
@@ -322,7 +324,6 @@ async def show_size_selection(message: Message, product_id: str, state: FSMConte
         reply_markup=size_selection_kb(sizes, product_id, lang)
     )
 
-# UPDATED: Extract the full text (after the "|") when the user clicks
 @router.callback_query(F.data.startswith("selectsize_"))
 async def size_selected(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
@@ -339,7 +340,7 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
         
     raw_size = sizes[size_index]
     
-    # Extract the full description if "|" was used, otherwise use the raw size
+    # Extract the full description if "|" was used
     if "|" in raw_size:
         size_text = raw_size.split("|")[1].strip()
     else:
