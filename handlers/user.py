@@ -8,7 +8,10 @@ from database import (
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, increment_stock, decrement_stock
 )
-from keyboards import payment_method_kb, admin_verify_kb, cod_verify_kb, delivery_time_kb, complete_order_kb
+from keyboards import (
+    payment_method_kb, admin_verify_kb, cod_verify_kb, 
+    delivery_time_kb, complete_order_kb, verify_delivery_fee_kb
+)
 from locales import TEXTS
 
 router = Router()
@@ -20,7 +23,8 @@ class OrderState(StatesGroup):
     waiting_name = State()
     waiting_phone = State()
     waiting_address = State()
-    waiting_screenshot = State()
+    waiting_delivery_fee_screenshot = State()
+    waiting_final_screenshot = State()
 
 class AddProductState(StatesGroup):
     waiting_photo = State()
@@ -348,23 +352,96 @@ async def receive_address(message: Message, state: FSMContext):
     phone = data.get("phone_number")
     
     await update_order_details(order_id, name, phone, address)
-    await update_order_status(order_id, "pending_payment")
     
-    order = await get_order(order_id)
-    item = order['items'][0]
-    
+    # NEW: Ask for Delivery Fee First
     await message.answer(
-        t["order_summary"].format(
-            name=item['name'], 
-            size=item.get('size'), 
-            price=item['price'], 
-            total=order['total']
+        t["pay_delivery_first"],
+        parse_mode="Markdown"
+    )
+    await state.set_state(OrderState.waiting_delivery_fee_screenshot)
+
+# --- NEW: DELIVERY FEE SCREENSHOT FLOW ---
+@router.message(OrderState.waiting_delivery_fee_screenshot, F.photo)
+async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
+    lang = await get_lang(state)
+    t = TEXTS[lang]
+    data = await state.get_data()
+    order_id = data.get("order_id")
+    
+    await update_order_status(order_id, "pending_delivery_fee")
+    
+    # Send to Owner for verification
+    await message.bot.send_photo(
+        chat_id=OWNER_ID, 
+        photo=message.photo[-1].file_id,
+        caption=t["owner_delivery_proof"].format(
+            order_id=order_id,
+            username=message.from_user.username or message.from_user.id
         ),
+        parse_mode="Markdown",
+        reply_markup=verify_delivery_fee_kb(order_id)
+    )
+    
+    await message.answer(t["delivery_fee_proof_sent"], reply_markup=main_menu_kb(lang))
+    await state.clear()
+
+# --- NEW: OWNER VERIFIES DELIVERY FEE ---
+@router.callback_query(F.data.startswith("verify_fee_"))
+async def verify_delivery_fee(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    order_id = callback.data.split("_")[2]
+    order = await get_order(order_id)
+    user_id = order['user_id']
+    lang = order.get('language', 'en')
+    t = TEXTS[lang]
+    
+    await update_order_status(order_id, "delivery_fee_paid")
+    
+    # Notify user and ask for final payment method
+    await callback.bot.send_message(
+        chat_id=user_id,
+        text=t["delivery_verified_msg"],
         reply_markup=checkout_type_kb(order_id, lang),
         parse_mode="Markdown"
     )
+    
+    # Update Owner message
+    if callback.message.caption:
+        await callback.message.edit_caption(
+            caption=callback.message.caption + "\n\n✅ **DELIVERY FEE VERIFIED**",
+            parse_mode="Markdown"
+        )
+    await callback.answer("Delivery fee verified.")
 
-# --- COD FLOW ---
+@router.callback_query(F.data.startswith("reject_fee_"))
+async def reject_delivery_fee(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    order_id = callback.data.split("_")[2]
+    order = await get_order(order_id)
+    user_id = order['user_id']
+    lang = order.get('language', 'en')
+    t = TEXTS[lang]
+    
+    await update_order_status(order_id, "rejected")
+    
+    await callback.bot.send_message(
+        chat_id=user_id,
+        text=t["order_rejected"],
+        parse_mode="Markdown"
+    )
+    
+    if callback.message.caption:
+        await callback.message.edit_caption(
+            caption=callback.message.caption + "\n\n❌ **REJECTED**",
+            parse_mode="Markdown"
+        )
+    await callback.answer("Order rejected.")
+
+# --- COD FLOW (Now happens AFTER delivery fee is paid) ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
 async def checkout_cod(callback: CallbackQuery, state: FSMContext):
     lang = await get_lang(state)
@@ -373,13 +450,10 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
         
-        if not order:
-            await callback.answer("Order not found.", show_alert=True)
-            return
-
         await update_order_status(order_id, "cod_pending")
         item = order['items'][0]
         
+        # Notify Owner with delivery buttons
         owner_msg = t["owner_new_order"].format(
             order_id=order_id,
             name=order.get('customer_name'),
@@ -388,7 +462,7 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             item=item['name'],
             size=item.get('size', 'N/A'),
             total=order['total'],
-            payment="Cash on Delivery"
+            payment="Cash on Delivery (Delivery Fee Paid)"
         )
         
         await callback.bot.send_message(
@@ -398,7 +472,6 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             parse_mode="Markdown"
         )
         
-        # Add the Back to Menu button
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
         ])
@@ -410,21 +483,18 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
                 reply_markup=user_kb
             )
         except Exception:
-            try:
-                await callback.message.edit_text(
-                    t["cod_confirmed"].format(phone=OWNER_PHONE), 
-                    parse_mode="Markdown",
-                    reply_markup=user_kb
-                )
-            except Exception:
-                pass
+            await callback.message.edit_text(
+                t["cod_confirmed"].format(phone=OWNER_PHONE), 
+                parse_mode="Markdown",
+                reply_markup=user_kb
+            )
                 
         await callback.answer("Order placed successfully!")
     except Exception as e:
         print(f"Error in COD: {e}")
         await callback.answer("An error occurred. Please try again.", show_alert=True)
 
-# --- PAY NOW FLOW ---
+# --- PAY NOW FLOW (Now happens AFTER delivery fee is paid) ---
 @router.callback_query(F.data.startswith("checkout_pay_"))
 async def checkout_pay(callback: CallbackQuery, state: FSMContext):
     lang = await get_lang(state)
@@ -446,7 +516,7 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
             )
             
         await state.update_data(order_id=order_id)
-        await state.set_state(OrderState.waiting_screenshot)
+        await state.set_state(OrderState.waiting_final_screenshot) # Use new state
         await callback.answer()
     except Exception as e:
         print(f"Error in Pay Now: {e}")
@@ -483,8 +553,8 @@ async def select_payment(callback: CallbackQuery, state: FSMContext):
     await state.update_data(order_id=order_id, method=method)
     await callback.answer()
 
-@router.message(OrderState.waiting_screenshot, F.photo)
-async def receive_screenshot(message: Message, state: FSMContext):
+@router.message(OrderState.waiting_final_screenshot, F.photo)
+async def receive_final_screenshot(message: Message, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     data = await state.get_data()
@@ -500,7 +570,7 @@ async def receive_screenshot(message: Message, state: FSMContext):
         item=item['name'],
         size=item.get('size', 'N/A'),
         total=order['total'],
-        payment="Pay Now (Verify Screenshot)"
+        payment="Pay Now (Item Verified)"
     )
 
     await message.bot.send_photo(
@@ -551,7 +621,7 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
     if not order or order['user_id'] != callback.from_user.id:
         return await callback.answer("Order not found.", show_alert=True)
         
-    if order['status'] not in ["pending_details", "pending_payment", "cod_pending"]:
+    if order['status'] not in ["pending_details", "pending_payment", "cod_pending", "pending_delivery_fee", "delivery_fee_paid"]:
         return await callback.answer(t["cannot_cancel"], show_alert=True)
 
     await update_order_status(order_id, "cancelled")
