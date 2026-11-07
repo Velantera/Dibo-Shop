@@ -79,3 +79,15 @@ def admin_back_orders_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")]
     ])
+
+# UPDATED: Size selection keyboard
+def size_selection_kb(sizes: list, product_id: str, lang: str):
+    t = TEXTS[lang]
+    buttons = []
+    # Use enumerate to get the index (0, 1, 2...)
+    for idx, size in enumerate(sizes):
+        # Pass the index instead of the size text to avoid 64-byte limit
+        buttons.append([InlineKeyboardButton(text=size, callback_data=f"selectsize_{idx}_{product_id}")])
+    
+    buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
