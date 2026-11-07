@@ -57,25 +57,36 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
-    if user.id != OWNER_ID: 
-        display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
-        notify_text = (
-            f"🆕 *New User Started the Bot!*\n\n"
-            f"👤 *First Name:* {user.first_name}\n"
-            f"🔗 *Contact:* {display_name}\n"
-            f"🆔 *ID:* `{user.id}`"
-        )
-        
-        # Added All Orders button to the Owner's notification
-        owner_kb = InlineKeyboardMarkup(inline_keyboard=[
+    # NEW: If the owner sends /start, show the Admin Dashboard
+    if user.id == OWNER_ID:
+        admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
-            [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
         ])
-        
-        try:
-            await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
-        except Exception as e:
-            print(f"Failed to notify owner: {e}")
+        await message.answer(
+            "👑 **Owner Dashboard**\n\nClick below to view all orders:",
+            reply_markup=admin_kb,
+            parse_mode="Markdown"
+        )
+        return
+
+    # Standard user notification
+    display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
+    notify_text = (
+        f"🆕 *New User Started the Bot!*\n\n"
+        f"👤 *First Name:* {user.first_name}\n"
+        f"🔗 *Contact:* {display_name}\n"
+        f"🆔 *ID:* `{user.id}`"
+    )
+    
+    owner_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
+        [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
+    ])
+    
+    try:
+        await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Failed to notify owner: {e}")
 
     args = message.text.split()
     if len(args) > 1 and args[1].startswith("buy_"):
@@ -1101,7 +1112,6 @@ async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
-    # Fetch all orders from database
     orders = await get_all_orders()
     
     if not orders:
