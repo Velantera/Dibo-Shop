@@ -20,6 +20,7 @@ from datetime import datetime, timezone, timedelta
 router = Router()
 DELIVERY_FEE = 300
 OWNER_PHONE = "+251927982723"
+SHOP_ADDRESS = "📍 **Address:** Addis Ababa, Addis Ketema, Burchuko Condominium, Block - 41, 3rd Floor"
 
 # --- FSM States ---
 class OrderState(StatesGroup):
@@ -214,7 +215,7 @@ def size_selection_kb(sizes: list, product_id: str, lang: str):
     t = TEXTS[lang]
     buttons = []
     for idx, size in enumerate(sizes):
-        # Split by "|" and take the first part for the button text
+        # FIXED: Split by "|" and take the first part for the button text
         button_text = size.split("|")[0].strip() if "|" in size else size
         buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"selectsize_{idx}_{product_id}")])
     
@@ -257,9 +258,7 @@ async def show_product(callback: CallbackQuery, state: FSMContext):
     idx = data.get("current_index", 0)
     p = products[idx]
     
-    # Display the FULL text in the channel/browse
     sizes_text = ", ".join(p.get("sizes", [])) if p.get("sizes") else "One Size"
-    
     total_with_fee = p['price'] + DELIVERY_FEE
     caption = f"👗 **{p['name']}**\n\n{p.get('description', '')}\n\n📏 **Sizes:** {sizes_text}\n💰 **Item Price:** {p['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **In Stock:** {p['stock']}"
     
@@ -340,7 +339,7 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
         
     raw_size = sizes[size_index]
     
-    # Extract the full description if "|" was used
+    # FIXED: Extract the full description if "|" was used
     if "|" in raw_size:
         size_text = raw_size.split("|")[1].strip()
     else:
@@ -930,7 +929,8 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
     
     sizes_str = ", ".join(data.get('sizes', [])) if data.get('sizes') else "One Size"
     total_with_fee = data['price'] + DELIVERY_FEE
-    caption = f"✨ **{data['name']}** ✨\n\n{data['desc']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {data['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {data['stock']} items left!\n\n👇 Tap below to order directly."
+    # UPDATED: Added SHOP_ADDRESS to the caption
+    caption = f"✨ **{data['name']}** ✨\n\n{data['desc']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {data['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {data['stock']} items left!\n\n{SHOP_ADDRESS}\n\n👇 Tap below to order directly."
     
     try:
         if CHANNEL_ID != 0:
@@ -1056,7 +1056,8 @@ async def edit_photo_value(message: Message, state: FSMContext):
                 
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
                 total_with_fee = product['price'] + DELIVERY_FEE
-                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
+                # UPDATED: Added SHOP_ADDRESS to the caption
+                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n{SHOP_ADDRESS}\n\n👇 Tap below to order directly."
                 
                 msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=new_photo, caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
                 await update_product(product_id, {"channel_message_id": msg.message_id})
@@ -1092,7 +1093,8 @@ async def edit_text_value(message: Message, state: FSMContext):
             try:
                 sizes_str = ", ".join(product.get('sizes', [])) if product.get('sizes') else "One Size"
                 total_with_fee = product['price'] + DELIVERY_FEE
-                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n👇 Tap below to order directly."
+                # UPDATED: Added SHOP_ADDRESS to the caption
+                caption = f"✨ **{product['name']}** ✨\n\n{product['description']}\n\n📏 **Sizes:** {sizes_str}\n💰 **Item Price:** {product['price']} ETB\n🚚 **Delivery:** {DELIVERY_FEE} ETB\n💵 **Total:** {total_with_fee} ETB\n📦 **Stock:** {product['stock']} items left!\n\n{SHOP_ADDRESS}\n\n👇 Tap below to order directly."
                 
                 bot_info = await message.bot.get_me()
                 buy_link = f"https://t.me/{bot_info.username}?start=buy_{product_id}"
