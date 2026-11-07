@@ -57,7 +57,7 @@ async def admin_action(callback: CallbackQuery):
             for item in order.get("items", []):
                 await increment_stock(item["product_id"], item.get("qty", 1))
 
-        # Custom message for Item Payment Rejection
+        # FIXED: Check if the user had already paid the delivery fee
         if order.get('status') == "delivery_fee_paid":
             # The user has already paid the delivery fee. Use the specific message.
             reject_msg = t["owner_pay_now_rejected"].format(
