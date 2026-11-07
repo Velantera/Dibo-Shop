@@ -210,12 +210,13 @@ def checkout_type_kb(order_id: str, lang: str):
         [InlineKeyboardButton(text=t["btn_cancel_checkout"], callback_data="menu_main")]
     ])
 
+# UPDATED: Use the index for the callback data to avoid BUTTON_DATA_INVALID
 def size_selection_kb(sizes: list, product_id: str, lang: str):
     t = TEXTS[lang]
     buttons = []
-    # Create one button per size string
-    for size in sizes:
-        buttons.append([InlineKeyboardButton(text=size, callback_data=f"selectsize_{size}_{product_id}")])
+    for idx, size in enumerate(sizes):
+        # Pass the index (0, 1, 2...) instead of the full text
+        buttons.append([InlineKeyboardButton(text=size, callback_data=f"selectsize_{idx}_{product_id}")])
     
     buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -321,14 +322,25 @@ async def show_size_selection(message: Message, product_id: str, state: FSMConte
         reply_markup=size_selection_kb(sizes, product_id, lang)
     )
 
+# UPDATED: Fetch the actual size text from the database using the index
 @router.callback_query(F.data.startswith("selectsize_"))
 async def size_selected(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split("_")
-    size = parts[1]
+    size_index = int(parts[1])
     product_id = parts[2]
     
+    product = await get_product(product_id)
+    if not product:
+        return await callback.answer("Product not found.", show_alert=True)
+        
+    sizes = product.get("sizes", [])
+    if size_index >= len(sizes):
+        return await callback.answer("Invalid size selection.", show_alert=True)
+        
+    size_text = sizes[size_index]
+    
     await callback.message.delete()
-    await prompt_for_name(callback.message, product_id, size, state)
+    await prompt_for_name(callback.message, product_id, size_text, state)
     await callback.answer()
 
 async def prompt_for_name(message: Message, product_id: str, size: str, state: FSMContext):
@@ -872,7 +884,6 @@ async def add_stock(message: Message, state: FSMContext):
         stock = int(message.text)
         await state.update_data(stock=stock)
         
-        # UPDATED: Ask for detailed sizes
         lang = await get_lang(state)
         t = TEXTS[lang]
         await message.answer(t["enter_sizes"])
@@ -884,7 +895,6 @@ async def add_stock(message: Message, state: FSMContext):
 async def add_sizes(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID: return
     
-    # UPDATED: Treat the entire text as one single string
     sizes_list = [message.text.strip()]
     
     data = await state.get_data()
