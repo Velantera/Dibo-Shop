@@ -40,7 +40,6 @@ def verify_delivery_fee_kb(order_id: str):
         [InlineKeyboardButton(text="❌ Reject Order", callback_data=f"reject_fee_{order_id}")]
     ])
 
-# NEW: For Pay Now Item Payment Verification
 def pay_now_verify_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -49,4 +48,23 @@ def pay_now_verify_kb(order_id: str):
             InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}")
         ],
         [InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}")]
+    ])
+
+# NEW: Admin Orders Keyboard
+def admin_orders_kb(orders: list):
+    buttons = []
+    for o in orders:
+        # Using the last 6 characters of the order ID for display
+        display_id = str(o['_id'])[-6:]
+        status = o.get('status', 'unknown').replace('_', ' ').title()
+        buttons.append([InlineKeyboardButton(
+            text=f"#{display_id} - {status}", 
+            callback_data=f"admin_view_order_{o['_id']}"
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# NEW: Admin Back to Orders Button
+def admin_back_orders_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")]
     ])
