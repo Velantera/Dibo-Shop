@@ -43,6 +43,13 @@ TEXTS = {
         "order_completed": "✅ **Order Completed!**\n\nThank you for shopping with us. We hope you love your dress!",
         "owner_new_order": "📦 **New Order Received!**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Total: {total} ETB\n💳 Payment: {payment}\n\n👇 **Set Delivery Time:**",
         "owner_order_updated": "📦 **Order Updated!**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Total: {total} ETB\n💳 Payment: {payment}\n\n🚚 Delivery: **{days}**\n\n👇 **Mark as Completed when delivered:**",
+        "pay_delivery_first": "⚠️ **Delivery Fee Required**\n\nTo prevent fake orders, please pay the delivery fee of **300 ETB** first.\n\nTransfer to:\n`Telebirr: 0911XXXXXX (Name: Your Name)`\n`CBE: 1000XXXXXXXX (Name: Your Name)`\n\nAfter payment, **send a screenshot** of the receipt here.",
+        "delivery_fee_proof_sent": "✅ Screenshot received! Please wait while we verify your delivery fee. Once verified, you will be asked to choose how to pay for the item.",
+        "delivery_verified_msg": "✅ **Delivery Fee Verified!**\n\nYour address is confirmed. How would you like to pay for the item itself?",
+        "owner_delivery_proof": "🚨 **Delivery Fee Payment Proof** 🚨\nOrder: `{order_id}`\nUser: @{username}\n\nIf the 300 ETB is in your account, click Verify.\n\n👇",
+        "owner_verify_fee": "✅ Verify Delivery Fee",
+        "owner_reject_fee": "❌ Reject Order",
+        "order_rejected": "❌ **Order Rejected.**\n\nYour delivery fee could not be verified. Please contact support.",
     },
     "om": {
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
@@ -88,5 +95,12 @@ TEXTS = {
         "order_completed": "✅ **Ajajni Xumurameera!**\n\nDibo Shop fayyadamuu keessan galatoomaa!",
         "owner_new_order": "📦 **Ajaja Haaraa!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Waliigala: {total} ETB\n💳 Kaffaltii: {payment}\n\n👇 **Yeroo Geessuu Filadhu:**",
         "owner_order_updated": "📦 **Ajajni Haaromsa'e!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Waliigala: {total} ETB\n💳 Kaffaltii: {payment}\n\n🚚 Geessuu: **{days}**\n\n👇 **Yeroo geessaa booda mirkaneessi:**",
+        "pay_delivery_first": "⚠️ **Kaffaltii Geessuu Barbaachisa**\n\nAjaja sobaa hambisuuf, maaloo dura kaffaltii geessuu **300 ETB** kaffalaa.\n\nHerrega:\n`Telebirr: 0911XXXXXX (Maqaa: Maqaa Keessan)`\n`CBE: 1000XXXXXXXX (Maqaa: Maqaa Keessan)`\n\nErga kaffaltanii booda, **Suuraa nagahee** asitti nuuf ergaa.",
+        "delivery_fee_proof_sent": "✅ Suuraan nagahee fudhatamee Jira! Maaloo kaffaltiin geessuu keenya mirkaneessinu eeggadhaa. Erga mirkanaa'e booda, akkamitti uffata kaffaluu akka barbaaddan isin gaafatama.",
+        "delivery_verified_msg": "✅ **Kaffaltiin Geessuu Mirkanaa'e!**\n\nTeessoon keessan mirkanaa'eera. Uffata mataa isaa akkamitti kaffaluu barbaaddu?",
+        "owner_delivery_proof": "🚨 **Nagahee Kaffaltii Geessuu** 🚨\nAjaja: `{order_id}`\nFayyadamaa: @{username}\n\nYoo 300 ETB herrega keessan keessa jiraate, Mirkaneessi tuqaa.\n\n👇",
+        "owner_verify_fee": "✅ Kaffaltii Geessuu Mirkaneessi",
+        "owner_reject_fee": "❌ Ajaja Haqi",
+        "order_rejected": "❌ **Ajajni Haqame.**\n\nKaffaltiin geessuu keessan mirkanaa'uu hin dandeenye. Maaloo gargaarsa qunnamaa.",
     }
 }
