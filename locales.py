@@ -53,6 +53,7 @@ TEXTS = {
         "owner_reject_fee": "❌ Reject Order",
         "order_rejected": "❌ **Order Rejected.**\n\nYour delivery fee could not be verified. Please contact support. {phone} ",
         "owner_cancel_notice": "🚨 **ORDER CANCELLED BY USER** 🚨\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item}\nThe stock has been returned automatically.",
+        "owner_pay_now_proof": "🚨 **Item Payment Proof Received!** 🚨\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Item Price: {item_price} ETB\n🚚 Delivery Fee: {delivery_fee} ETB (Paid)\n💵 **Total to Verify: {remaining} ETB**\n💳 Payment Method: {payment}\n\n👇 **Set Delivery Time:**",
     },
     "om": {
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
@@ -108,5 +109,6 @@ TEXTS = {
         "owner_reject_fee": "❌ Ajaja Haqi",
         "order_rejected": "❌ **Ajajni Haqame.**\n\nKaffaltiin geessuu keessan mirkanaa'uu hin dandeenye. Maaloo nu qunnamaa. {phone} ",
         "owner_cancel_notice": "🚨 **AJJAJNI HAQAME (USER)** 🚨\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item}\nKuusni ofumaan deebi'ee jira.",
+        "owner_pay_now_proof": "🚨 **Nagaheen Kaffaltii Uffataa Dhufeera!** 🚨\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Gatii Uffataa: {item_price} ETB\n🚚 Kaffaltii Geessuu: {delivery_fee} ETB (Kaffalameera)\n💵 **Waliigala Mirkaneessuu: {remaining} ETB**\n💳 Kaffaltii: {payment}\n\n👇 **Yeroo Geessuu Filadhu:**",
     }
 }
