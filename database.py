@@ -116,7 +116,6 @@ async def get_user_orders(user_id: int):
     ).sort("created_at", -1).limit(20)
     return await cursor.to_list(length=20)
 
-# NEW: Fetch all orders for the Admin Panel
 async def get_all_orders():
     cursor = _db.orders.find({}).sort("created_at", -1).limit(50)
     return await cursor.to_list(length=50)
