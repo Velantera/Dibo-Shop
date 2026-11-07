@@ -34,9 +34,19 @@ def complete_order_kb(order_id: str):
         [InlineKeyboardButton(text="✅ Mark as Completed", callback_data=f"admin_complete_{order_id}")]
     ])
 
-# NEW: For delivery fee verification
 def verify_delivery_fee_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Verify Delivery Fee", callback_data=f"verify_fee_{order_id}")],
         [InlineKeyboardButton(text="❌ Reject Order", callback_data=f"reject_fee_{order_id}")]
+    ])
+
+# NEW: For Pay Now Item Payment Verification
+def pay_now_verify_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="1 Day", callback_data=f"deliver_1_{order_id}"),
+            InlineKeyboardButton(text="2 Days", callback_data=f"deliver_2_{order_id}"),
+            InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}")
+        ],
+        [InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}")]
     ])
