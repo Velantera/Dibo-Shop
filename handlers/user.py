@@ -10,7 +10,7 @@ from database import (
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
-    delivery_time_kb, complete_order_kb, verify_delivery_fee_kb
+    delivery_time_kb, complete_order_kb, verify_delivery_fee_kb, pay_now_verify_kb
 )
 from locales import TEXTS
 from datetime import datetime, timezone, timedelta
@@ -136,16 +136,28 @@ async def send_reminder(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "menu_main")
 async def back_to_main(callback: CallbackQuery, state: FSMContext):
-    lang = await get_lang(state)
-    t = TEXTS[lang]
+    # UPDATED: Clear state and reset to language selection
+    await state.clear()
     
-    data = await state.get_data()
-    name = data.get("first_name", callback.from_user.first_name)
+    lang_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🇬🇧 English", callback_data="setlang_en"),
+            InlineKeyboardButton(text="🇪🇹 Afaan Oromoo", callback_data="setlang_om")
+        ]
+    ])
     
     try:
-        await callback.message.edit_text(t["welcome"].format(name=name), reply_markup=main_menu_kb(lang))
+        await callback.message.edit_text(
+            "🌐 Please choose your language.\n\n"
+            "🌐 Maaloo Afaan Filadhaa.",
+            reply_markup=lang_kb
+        )
     except Exception:
-        await callback.message.answer(t["welcome"].format(name=name), reply_markup=main_menu_kb(lang))
+        await callback.message.answer(
+            "🌐 Please choose your language.\n\n"
+            "🌐 Maaloo Afaan Filadhaa.",
+            reply_markup=lang_kb
+        )
     await callback.answer()
 
 @router.callback_query(F.data == "menu_help")
@@ -467,7 +479,6 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
         
-        # FIXED: Fetch language from the database instead of FSM state
         lang = order.get('language', 'en')
         t = TEXTS[lang]
         
@@ -498,7 +509,6 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
         ])
         
-        # FIXED: Uses the correct language fetched from DB
         try:
             await callback.message.edit_caption(
                 caption=t["cod_confirmed"].format(phone=OWNER_PHONE), 
@@ -524,7 +534,6 @@ async def checkout_pay(callback: CallbackQuery, state: FSMContext):
         order_id = callback.data.split("_")[2]
         order = await get_order(order_id)
         
-        # FIXED: Fetch language from the database
         lang = order.get('language', 'en')
         t = TEXTS[lang]
         
@@ -555,7 +564,6 @@ async def select_payment(callback: CallbackQuery, state: FSMContext):
     _, method, order_id = callback.data.split("_", 2)
     order = await get_order(order_id)
     
-    # FIXED: Fetch language from the database
     lang = order.get('language', 'en')
     t = TEXTS[lang]
     
@@ -592,13 +600,13 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
     order_id = data.get("order_id")
     order = await get_order(order_id)
     
-    # FIXED: Fetch language from the database
     lang = order.get('language', 'en')
     t = TEXTS[lang]
     
     item = order['items'][0]
 
-    owner_msg = t["owner_new_order"].format(
+    # UPDATED: Use the new owner_pay_now_proof format
+    owner_msg = t["owner_pay_now_proof"].format(
         order_id=order_id,
         name=order.get('customer_name'),
         phone=order.get('phone_number'),
@@ -611,10 +619,11 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
         payment="Pay Now (Item Verified)"
     )
 
+    # UPDATED: Use the new keyboard with Delivery Time and Reject button
     await message.bot.send_photo(
         chat_id=OWNER_ID, photo=message.photo[-1].file_id,
         caption=owner_msg,
-        parse_mode="Markdown", reply_markup=delivery_time_kb(order_id)
+        parse_mode="Markdown", reply_markup=pay_now_verify_kb(order_id)
     )
 
     await message.answer(t["screenshot_received"], reply_markup=main_menu_kb(lang))
@@ -654,7 +663,6 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
     order_id = callback.data.split("_")[2]
     order = await get_order(order_id)
     
-    # FIXED: Fetch language from the database
     lang = order.get('language', 'en')
     t = TEXTS[lang]
     
