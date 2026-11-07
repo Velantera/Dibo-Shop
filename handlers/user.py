@@ -7,7 +7,7 @@ from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, increment_stock, decrement_stock,
-    get_all_orders # Added for All Orders
+    get_all_orders
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
@@ -57,7 +57,6 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
-    # NEW: If the owner sends /start, show the Admin Dashboard
     if user.id == OWNER_ID:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
@@ -69,7 +68,6 @@ async def cmd_start(message: Message, state: FSMContext):
         )
         return
 
-    # Standard user notification
     display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
     notify_text = (
         f"🆕 *New User Started the Bot!*\n\n"
@@ -215,14 +213,10 @@ def checkout_type_kb(order_id: str, lang: str):
 def size_selection_kb(sizes: list, product_id: str, lang: str):
     t = TEXTS[lang]
     buttons = []
-    row = []
+    # Create one button per size string
     for size in sizes:
-        row.append(InlineKeyboardButton(text=size, callback_data=f"selectsize_{size}_{product_id}"))
-        if len(row) == 4:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
+        buttons.append([InlineKeyboardButton(text=size, callback_data=f"selectsize_{size}_{product_id}")])
+    
     buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -877,7 +871,11 @@ async def add_stock(message: Message, state: FSMContext):
     try:
         stock = int(message.text)
         await state.update_data(stock=stock)
-        await message.answer("✅ Stock saved. Now send the **Available Sizes**.\n\n*(Separate with commas, e.g., `S, M, L`. Type `None` if it's one size.)*")
+        
+        # UPDATED: Ask for detailed sizes
+        lang = await get_lang(state)
+        t = TEXTS[lang]
+        await message.answer(t["enter_sizes"])
         await state.set_state(AddProductState.waiting_sizes)
     except:
         await message.answer("❌ Invalid number. Send the stock quantity again.")
@@ -886,11 +884,9 @@ async def add_stock(message: Message, state: FSMContext):
 async def add_sizes(message: Message, state: FSMContext):
     if message.from_user.id != OWNER_ID: return
     
-    if message.text.lower() == 'none':
-        sizes_list = []
-    else:
-        sizes_list = [s.strip().upper() for s in message.text.split(",")]
-        
+    # UPDATED: Treat the entire text as one single string
+    sizes_list = [message.text.strip()]
+    
     data = await state.get_data()
     product_id = await add_product(
         name=data['name'], price=data['price'], description=data['desc'], 
@@ -898,9 +894,9 @@ async def add_sizes(message: Message, state: FSMContext):
     )
     await state.update_data(product_id=product_id, stock=data['stock'], sizes=sizes_list)
     
-    sizes_text = ", ".join(sizes_list) if sizes_list else "One Size"
+    sizes_text = sizes_list[0]
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 Yes, Post to Channel", callback_data="post_channel")], [InlineKeyboardButton(text="❌ No, Just Save", callback_data="post_cancel")]])
-    await message.answer(f"🎉 Product saved! (Sizes: {sizes_text})\n\nDo you want to post this to your Channel now?", reply_markup=kb)
+    await message.answer(f"🎉 Product saved! (Size: {sizes_text})\n\nDo you want to post this to your Channel now?", reply_markup=kb)
     await state.set_state(AddProductState.confirm_post)
 
 @router.callback_query(F.data == "post_channel", AddProductState.confirm_post)
@@ -1070,7 +1066,7 @@ async def edit_text_value(message: Message, state: FSMContext):
     try:
         if field == "price": val = float(val)
         elif field == "stock": val = int(val)
-        elif field == "sizes": val = [s.strip().upper() for s in val.split(",")]
+        elif field == "sizes": val = [val] # Treat entire text as one string
         
         await update_product(product_id, {field: val})
         
