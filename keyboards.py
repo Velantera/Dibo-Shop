@@ -21,7 +21,6 @@ def cod_verify_kb(order_id: str):
         [InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_reject_{order_id}")]
     ])
 
-# NEW: Delivery Timeframe Keyboard
 def delivery_time_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -31,8 +30,14 @@ def delivery_time_kb(order_id: str):
         ]
     ])
 
-# NEW: Complete Order Keyboard
 def complete_order_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Mark as Completed", callback_data=f"admin_complete_{order_id}")]
+    ])
+
+# NEW: For delivery fee verification
+def verify_delivery_fee_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Verify Delivery Fee", callback_data=f"verify_fee_{order_id}")],
+        [InlineKeyboardButton(text="❌ Reject Order", callback_data=f"reject_fee_{order_id}")]
     ])
