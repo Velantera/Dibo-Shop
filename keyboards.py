@@ -64,7 +64,6 @@ def pay_now_verify_kb(order_id: str):
         [InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}")]
     ])
 
-# NEW: Admin Orders Keyboard
 def admin_orders_kb(orders: list):
     buttons = []
     for o in orders:
@@ -76,7 +75,6 @@ def admin_orders_kb(orders: list):
         )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# NEW: Admin Back to Orders Button
 def admin_back_orders_kb():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")]
