@@ -347,13 +347,11 @@ async def size_selected(callback: CallbackQuery, state: FSMContext):
     await prompt_for_name(callback.message, product_id, size_text, state)
     await callback.answer()
 
-# UPDATED: Only save to state, do not create order yet
 async def prompt_for_name(message: Message, product_id: str, size: str, state: FSMContext):
     lang = await get_lang(state)
     t = TEXTS[lang]
     product = await get_product(product_id)
     
-    # Save product details in state temporarily
     await state.update_data(
         product_id=str(product["_id"]),
         product_name=product["name"],
@@ -413,7 +411,6 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     t = TEXTS[lang]
     data = await state.get_data()
     
-    # NOW create the order in the database because they paid the delivery fee
     total_with_fee = data["product_price"] + DELIVERY_FEE
     order_id = await create_order(
         user_id=message.chat.id, username=message.from_user.username if hasattr(message, 'from_user') else message.chat.username,
@@ -422,7 +419,6 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
         language=lang
     )
     
-    # Update order with customer details
     await update_order_details(order_id, data["customer_name"], data["phone_number"], data["customer_address"])
     await update_order_status(order_id, "pending_delivery_fee")
     
