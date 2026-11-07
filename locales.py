@@ -102,7 +102,7 @@ TEXTS = {
         "owner_order_updated": "📦 **Ajajni Haaromsa'e!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Hafte: {remaining} ETB\n💳 Kaffaltii: {payment}\n\n🚚 Geessuu: **{days}**\n\n👇 **Yeroo geessaa booda mirkaneessi:**",
         "pay_delivery_first": "⚠️ **Kaffaltii Geessuu (Delivery fee) Kaffaluu Barbaachisa**\n\nAjaja sobaa hambisuuf, maaloo dura kaffaltii geessuu(Delivery fee) **300 ETB** kaffalaa.\n\nHerrega:\n`Telebirr: 0927982723 (Maqaa: Dibora Diriba)`\n`CBE: 1000146782012 (Maqaa: Dibora Diriba)`\n\nErga kaffaltanii booda, **Suuraa nagahee** asitti nuuf ergaa.",
         "delivery_fee_proof_sent": "✅ Suuraan nagahee fudhatamee Jira! Kaffaltii Mirkaneessaa jirra. Obsaan nu eegaa",
-        "delivery_verified_msg": "✅ **Kaffaltiin Geessuu (Delivery fee) Mirkanaa'ee jira!**\n\nKaffaltiin geessuu keessan 300 ETB fudhatameera. Uffataaf hafe **{remaining} ETB** dha.\n\nUffata akkamitti kaffaluu barbaaddu?",
+        "delivery_verified_msg": "✅ **Kaffaltiin Geessuu (Delivery fee) Mirkanaa'ee jira!**\n\nKaffaltiin geessuu keessan 300 ETB fudhatameera. Kaffaltiin uffataaf hafe **{remaining} ETB** dha.\n\nUffataaf akkamitti kaffaluu barbaaddu?",
         "owner_delivery_proof": "🚨 **Nagahee Kaffaltii Geessuu** 🚨\nAjaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\nFayyadamaa: @{username}\n\nQarshiin 300 ETB herrega keessan keessa yoo jiraate, Mirkaneessaa.\n\n👇",
         "owner_verify_fee": "✅ Mirkaneessi",
         "owner_reject_fee": "❌ Ajaja Haqi",
