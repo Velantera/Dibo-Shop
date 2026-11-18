@@ -7,7 +7,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URL = os.getenv("MONGO_URL")
 MONGO_DB_NAME = os.getenv("MONGO_DB_NAME", "shop")
 
-# Clean up IDs to prevent crashes from quotes or spaces
 def get_clean_id(env_var: str) -> int:
     val = os.getenv(env_var, "0")
     clean_val = val.replace('"', '').replace("'", "").replace(" ", "")
@@ -16,8 +15,13 @@ def get_clean_id(env_var: str) -> int:
     except ValueError:
         return 0
 
-# NEW: Your personal Telegram ID
-OWNER_ID = get_clean_id("OWNER_ID") 
+# Load both owners
+_owner_1 = get_clean_id("OWNER_ID")
+_owner_2 = get_clean_id("OWNER_ID_2")
+
+# Create a list of valid owner IDs
+OWNER_IDS = [uid for uid in [_owner_1, _owner_2] if uid != 0]
+
 ADMIN_GROUP_ID = get_clean_id("ADMIN_GROUP_ID")
 CHANNEL_ID = get_clean_id("CHANNEL_ID")
 
@@ -25,7 +29,7 @@ if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is not set")
 if not MONGO_URL:
     raise ValueError("MONGO_URL is not set")
-if not OWNER_ID:
+if not OWNER_IDS:
     raise ValueError("OWNER_ID is not set. Add it to your .env file!")
 
 PAYMENT_ACCOUNTS = {
