@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from config import OWNER_ID
+from config import OWNER_IDS
 from database import get_order, update_order_status, decrement_stock, increment_stock
 from locales import TEXTS
 
@@ -10,7 +10,8 @@ OWNER_PHONE = "+251927982723"
 
 @router.callback_query(F.data.startswith("admin_"))
 async def admin_action(callback: CallbackQuery):
-    if callback.from_user.id != OWNER_ID:
+    # Check if the person clicking is ONE of the owners
+    if callback.from_user.id not in OWNER_IDS:
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
 
@@ -52,15 +53,12 @@ async def admin_action(callback: CallbackQuery):
             for item in order.get("items", []):
                 await increment_stock(item["product_id"], item.get("qty", 1))
 
-        # FIXED: Check the payment method to decide the message
         if order.get('payment_method') == "pending_payment":
-            # User paid via Pay Now and we are rejecting the item payment
             reject_msg = t["owner_pay_now_rejected"].format(
                 item=item['name'],
                 phone=OWNER_PHONE
             )
         else:
-            # Fallback for other rejection scenarios (e.g., delivery fee)
             reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
 
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
