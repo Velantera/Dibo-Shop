@@ -10,10 +10,15 @@ OWNER_PHONE = "+251927982723"
 
 @router.callback_query(F.data.startswith("admin_"))
 async def admin_action(callback: CallbackQuery):
-    # Check if the person clicking is ONE of the owners
     if callback.from_user.id not in OWNER_IDS:
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
+
+    # --- ADDED FIX HERE ---
+    # Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
+    parts = callback.data.split("_")
+    if len(parts) < 3:
+        return await callback.answer()
 
     _, action, order_id = callback.data.split("_", 2)
     order = await get_order(order_id)
