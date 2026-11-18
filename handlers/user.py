@@ -7,7 +7,7 @@ from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, increment_stock, decrement_stock,
-    get_all_orders
+    get_all_orders, save_user  # <-- ADDED save_user HERE
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
@@ -58,6 +58,11 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
+    # --- SAVE USER TO DATABASE FOR BROADCASTS ---
+    username = user.username if user.username else ""
+    await save_user(user.id, user.first_name, username)
+    # --------------------------------------------
+
     # --- UPDATED OWNER DASHBOARD ---
     if user.id in OWNER_IDS:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -65,7 +70,8 @@ async def cmd_start(message: Message, state: FSMContext):
             [
                 InlineKeyboardButton(text="➕ Add New Product", callback_data="admin_add_product"),
                 InlineKeyboardButton(text="📝 Edit Products", callback_data="admin_edit_products")
-            ]
+            ],
+            [InlineKeyboardButton(text="📢 Broadcast Message (Coming Soon)", callback_data="admin_broadcast")]
         ])
         await message.answer(
             "👑 **Owner Dashboard**\n\nManage your shop below:",
@@ -871,7 +877,6 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 6. ADMIN: ADD PRODUCT (OWNER ONLY)
 # ==========================================
-# ADDED CALLBACK TO TRIGGER FROM DASHBOARD BUTTON
 @router.callback_query(F.data == "admin_add_product")
 async def cb_addproduct(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in OWNER_IDS:
@@ -987,7 +992,6 @@ async def cancel_post(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 7. ADMIN: EDIT & DELETE PRODUCT (OWNER ONLY)
 # ==========================================
-# ADDED CALLBACK TO TRIGGER FROM DASHBOARD BUTTON
 @router.callback_query(F.data == "admin_edit_products")
 async def cb_editproduct(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in OWNER_IDS:
