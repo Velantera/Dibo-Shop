@@ -58,17 +58,22 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
-    # Check if user is one of the owners
+    # --- UPDATED OWNER DASHBOARD ---
     if user.id in OWNER_IDS:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
+            [
+                InlineKeyboardButton(text="➕ Add New Product", callback_data="admin_add_product"),
+                InlineKeyboardButton(text="📝 Edit Products", callback_data="admin_edit_products")
+            ]
         ])
         await message.answer(
-            "👑 **Owner Dashboard**\n\nClick below to view all orders:",
+            "👑 **Owner Dashboard**\n\nManage your shop below:",
             reply_markup=admin_kb,
             parse_mode="Markdown"
         )
         return
+    # --------------------------------
 
     display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
     notify_text = (
@@ -416,7 +421,6 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     
     total_with_fee = data["product_price"] + DELIVERY_FEE
     
-    # Safe get username
     username = message.from_user.username if message.from_user.username else message.chat.id
 
     order_id = await create_order(
@@ -431,7 +435,6 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     
     order = await get_order(order_id)
     
-    # Send to ALL Owners
     for owner_id in OWNER_IDS:
         try:
             await message.bot.send_photo(
@@ -534,7 +537,6 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             payment="Cash on Delivery"
         )
         
-        # Send to ALL Owners
         for owner_id in OWNER_IDS:
             try:
                 await callback.bot.send_message(
@@ -659,7 +661,6 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
         payment="Pay Now (Item Verified)"
     )
 
-    # Send to ALL Owners
     for owner_id in OWNER_IDS:
         try:
             await message.bot.send_photo(
@@ -741,7 +742,6 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
         item=item_name
     )
     
-    # Send to ALL Owners
     for owner_id in OWNER_IDS:
         try:
             await callback.bot.send_message(
@@ -871,6 +871,15 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 6. ADMIN: ADD PRODUCT (OWNER ONLY)
 # ==========================================
+# ADDED CALLBACK TO TRIGGER FROM DASHBOARD BUTTON
+@router.callback_query(F.data == "admin_add_product")
+async def cb_addproduct(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in OWNER_IDS:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+    await callback.message.answer("📸 Send me a **photo** of the dress.")
+    await state.set_state(AddProductState.waiting_photo)
+    await callback.answer()
+
 @router.message(F.text == "/addproduct")
 async def cmd_addproduct(message: Message, state: FSMContext):
     if message.from_user.id not in OWNER_IDS:
@@ -978,6 +987,24 @@ async def cancel_post(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 7. ADMIN: EDIT & DELETE PRODUCT (OWNER ONLY)
 # ==========================================
+# ADDED CALLBACK TO TRIGGER FROM DASHBOARD BUTTON
+@router.callback_query(F.data == "admin_edit_products")
+async def cb_editproduct(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in OWNER_IDS:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+        
+    products = await get_all_products()
+    if not products:
+        return await callback.message.answer("No products found in DB.")
+    
+    text = "Send the **Product ID** you want to edit/delete:\n\n"
+    for p in products:
+        text += f"`{p['_id']}` — {p['name']} (Stock: {p['stock']}, Price: {p['price']})\n"
+    
+    await callback.message.answer(text, parse_mode="Markdown")
+    await state.set_state(EditProductState.waiting_id)
+    await callback.answer()
+
 @router.message(F.text == "/editproduct")
 async def cmd_editproduct(message: Message, state: FSMContext):
     if message.from_user.id not in OWNER_IDS:
@@ -1112,7 +1139,7 @@ async def edit_text_value(message: Message, state: FSMContext):
     try:
         if field == "price": val = float(val)
         elif field == "stock": val = int(val)
-        elif field == "sizes": val = [val] # Treat entire text as one string
+        elif field == "sizes": val = [val]
         
         await update_product(product_id, {field: val})
         
