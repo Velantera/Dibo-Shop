@@ -1,7 +1,7 @@
 TEXTS = {
     "en": {
         "choose_lang": "🌐 Please choose your language:",
-        "welcome": "✨ **Hi {name} Welcome to RO Fashion!** ✨\n\nDiscover our latest collection of premium dresses. Tap a button below to start shopping.",
+        "welcome": "✨ **Hi {name} Welcome to Qubee Fashion!** ✨\n\nDiscover our latest collection of premium dresses. Tap a button below to start shopping.",
         "btn_browse": "👗 Browse Dresses",
         "btn_orders": "📦 My Orders",
         "btn_help": "💬 Help & Support",
@@ -42,7 +42,7 @@ TEXTS = {
         "delivery_time_3": "3 Days",
         "delivery_notified": "📦 **Delivery Update!**\n\nYour order will be delivered within **{days}**.\n\nIf you need to reach us, call: {phone}",
         "mark_complete": "✅ Mark as Completed (Cash Collected)",
-        "order_completed": "✅ **Order Completed!**\n\nThank you for shopping with us. We hope you love your dress!",
+        "order_completed": "✅ **Order Completed!**\n\nThank you for shopping with Qubee Fashion. We hope you love your dress!",
         "owner_new_order": "📦 **New Order Received!**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Item Price: {item_price} ETB\n🚚 Delivery Fee: {delivery_fee} ETB (Paid)\n💵 **Remaining to Collect: {remaining} ETB**\n💳 Payment Method: {payment}\n\n👇 **Set Delivery Time:**",
         "owner_order_updated": "📦 **Order Updated!**\n\n🆔 Order: `{order_id}`\n👤 Name: {name}\n📞 Phone: {phone}\n📍 Address: {address}\n\n👗 Item: {item} (Size: {size})\n💰 Remaining to Collect: {remaining} ETB\n💳 Payment: {payment}\n\n🚚 Delivery: **{days}**\n\n👇 **Mark as Completed when delivered:**",
         "pay_delivery_first": "⚠️ **Delivery Fee Required**\n\nTo prevent fake orders, please pay the delivery fee of **300 ETB** first.\n\nTransfer to:\n`Telebirr: 0927982723 (Name: Dibora Diriba)`\n`CBE: 1000146782012 (Name: Dibora Diriba)`\n\nAfter payment, **send a screenshot** of the receipt here.",
@@ -64,7 +64,7 @@ TEXTS = {
     },
     "om": {
         "choose_lang": "🌐 Maaloo afaan filadhaa:",
-        "welcome": "✨ **Hi {name} Baga nagaan gara RO Fashion dhuftan!** ✨\n\nUffata haaraa fi miidhagoo filadhaa. Jalqabuuf button armaan gadii tuqaa.",
+        "welcome": "✨ **Hi {name} Baga nagaan gara Qubee Fashion dhuftan!** ✨\n\nUffata haaraa fi miidhagoo filadhaa. Jalqabuuf button armaan gadii tuqaa.",
         "btn_browse": "👗 Uffata Ilaaluuf",
         "btn_orders": "📦 Ajaja Koo",
         "btn_help": "💬 Gargaarsaaf",
@@ -105,7 +105,7 @@ TEXTS = {
         "delivery_time_3": "Guyyaa 3",
         "delivery_notified": "📦 **Haala Geessuu!**\n\nAjajni keessan **{days}** keessatti isin bira ga'a.\n\nNu qunnamuuf lakkoofsa bilbilaa: {phone}",
         "mark_complete": "✅ Akka Xumurame Mirkaneessi (Maallaqa Fudhatame)",
-        "order_completed": "✅ **Ajajni Xumurameera!**\n\nRO Fashion fayyadamuu keessaniif galatoomaa!",
+        "order_completed": "✅ **Ajajni Xumurameera!**\n\nQubee Fashion fayyadamuu keessaniif galatoomaa!",
         "owner_new_order": "📦 **Ajaja Haaraa!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Gatii Uffataa: {item_price} ETB\n🚚 Kaffaltii Geessuu: {delivery_fee} ETB (Kaffalameera)\n💵 **Hafte: {remaining} ETB**\n💳 Kaffaltii: {payment}\n\n👇 **Yeroo Geessuu Filadhu:**",
         "owner_order_updated": "📦 **Ajajni Haaromsa'e!**\n\n🆔 Ajaja: `{order_id}`\n👤 Maqaa: {name}\n📞 Bilbila: {phone}\n📍 Teessoo: {address}\n\n👗 Uffata: {item} (Saayizii: {size})\n💰 Hafte: {remaining} ETB\n💳 Kaffaltii: {payment}\n\n🚚 Geessuu: **{days}**\n\n👇 **Yeroo geessaa booda mirkaneessi:**",
         "pay_delivery_first": "⚠️ **Kaffaltii Geessuu (Delivery fee) Kaffaluu Barbaachisa**\n\nAjaja sobaa hambisuuf, maaloo dura kaffaltii geessuu(Delivery fee) **300 ETB** kaffalaa.\n\nHerrega:\n`Telebirr: 0927982723 (Maqaa: Dibora Diriba)`\n`CBE: 1000146782012 (Maqaa: Dibora Diriba)`\n\nErga kaffaltanii booda, **Suuraa nagahee** asitti nuuf ergaa.",
