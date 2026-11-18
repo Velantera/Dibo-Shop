@@ -119,3 +119,27 @@ async def get_user_orders(user_id: int):
 async def get_all_orders():
     cursor = _db.orders.find({}).sort("created_at", -1).limit(50)
     return await cursor.to_list(length=50)
+
+# ==========================================
+# USERS (For Broadcast / Reminders)
+# ==========================================
+async def save_user(user_id: int, first_name: str, username: str):
+    try:
+        await _db.users.update_one(
+            {"_id": user_id},
+            {
+                "$set": {
+                    "first_name": first_name,
+                    "username": username,
+                    "last_seen": datetime.utcnow()
+                },
+                "$setOnInsert": {"joined_at": datetime.utcnow()}
+            },
+            upsert=True
+        )
+    except Exception as e:
+        print(f"Error saving user: {e}")
+
+async def get_all_users():
+    cursor = _db.users.find({})
+    return await cursor.to_list(length=None)
