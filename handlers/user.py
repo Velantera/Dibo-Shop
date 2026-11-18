@@ -7,7 +7,7 @@ from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, increment_stock, decrement_stock,
-    get_all_orders, save_user  # <-- ADDED save_user HERE
+    get_all_orders, save_user
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
@@ -137,6 +137,16 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
             reply_markup=main_menu_kb(lang)
         )
     await callback.answer()
+
+# --- ADDED BROADCAST HANDLER HERE ---
+@router.callback_query(F.data == "admin_broadcast")
+async def cb_broadcast(callback: CallbackQuery):
+    if callback.from_user.id not in OWNER_IDS:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+    
+    # Show a pop-up alert to the owner
+    await callback.answer("🚧 Broadcast feature is coming soon! You will be able to send messages to all users here.", show_alert=True)
+# ------------------------------------
 
 @router.callback_query(F.data.startswith("reminder_"))
 async def send_reminder(callback: CallbackQuery, state: FSMContext):
