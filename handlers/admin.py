@@ -14,8 +14,7 @@ async def admin_action(callback: CallbackQuery):
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
 
-    # --- ADDED FIX HERE ---
-    # Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
+    # FIX: Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
     parts = callback.data.split("_")
     if len(parts) < 3:
         return await callback.answer()
