@@ -110,6 +110,16 @@ async def update_order_status(order_id: str, status: str):
     except Exception:
         pass
 
+async def update_payment_method(order_id: str, method: str):
+    """FIX: Added this function so we can save 'telebirr' or 'cbe' to the database"""
+    try:
+        await _db.orders.update_one(
+            {"_id": ObjectId(order_id)}, 
+            {"$set": {"payment_method": method}}
+        )
+    except Exception:
+        pass
+
 async def get_user_orders(user_id: int):
     cursor = _db.orders.find(
         {"user_id": user_id, "status": {"$ne": "cancelled"}}
