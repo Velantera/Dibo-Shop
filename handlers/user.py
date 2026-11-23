@@ -6,13 +6,15 @@ from config import PAYMENT_ACCOUNTS, OWNER_ID, CHANNEL_ID
 from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
-    get_order, update_order_details, increment_stock, decrement_stock,
+    get_order, update_order_details, decrement_stock,
     get_all_orders, save_user, update_payment_method  # <-- IMPORTED HERE
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
     delivery_time_kb, complete_order_kb, verify_delivery_fee_kb, pay_now_verify_kb,
-    admin_orders_kb, admin_back_orders_kb, confirm_complete_kb
+    admin_orders_kb, admin_back_orders_kb,
+    confirm_approve_kb, confirm_reject_kb, confirm_complete_kb,
+    confirm_cancel_kb, confirm_verify_fee_kb, confirm_reject_fee_kb
 )
 from locales import TEXTS
 from datetime import datetime, timezone, timedelta
@@ -49,6 +51,52 @@ class EditProductState(StatesGroup):
 async def get_lang(state: FSMContext) -> str:
     data = await state.get_data()
     return data.get("lang", "en")
+
+
+DELIVERY_FEE_PAID_STATUSES = {"delivery_fee_paid", "pending_payment", "paid", "cod_pending", "delivered", "payment_rejected", "cancelled_after_fee"}
+TERMINAL_ORDER_STATUSES = {"delivered", "cancelled", "rejected", "payment_rejected", "cancelled_after_fee"}
+
+
+def order_payment_summary(order: dict) -> tuple[float, float, bool]:
+    """Return (order_total, remaining_due, delivery_fee_verified)."""
+    total = float(order.get("total", 0) or 0)
+    fee_paid = order.get("status") in DELIVERY_FEE_PAID_STATUSES or bool(order.get("delivery_fee_paid"))
+    remaining = max(total - DELIVERY_FEE, 0) if fee_paid else total
+    return total, remaining, fee_paid
+
+
+async def edit_admin_message(message: Message, text: str, reply_markup=None):
+    """Edit either a photo caption or a normal text message."""
+    try:
+        if message.caption is not None:
+            await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode="Markdown")
+        else:
+            await message.edit_text(text=text, reply_markup=reply_markup, parse_mode="Markdown")
+    except Exception:
+        # If Telegram refuses to edit (for example, unchanged content), send a new message.
+        await message.answer(text, reply_markup=reply_markup, parse_mode="Markdown")
+
+
+async def ask_owner_confirmation(callback: CallbackQuery, order_id: str, action: str):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ You are not the owner.", show_alert=True)
+
+    order = await get_order(order_id)
+    if not order:
+        return await callback.answer("Order not found.", show_alert=True)
+
+    prompts = {
+        "approve": ("⚠️ **Are you sure you want to APPROVE this payment?**", confirm_approve_kb(order_id)),
+        "reject": ("⚠️ **Are you sure you want to REJECT this payment/order?**", confirm_reject_kb(order_id)),
+        "complete": ("⚠️ **Are you sure you want to MARK THIS ORDER AS COMPLETE?**", confirm_complete_kb(order_id)),
+        "cancel": ("⚠️ **Are you sure you want to CANCEL this order?**", confirm_cancel_kb(order_id)),
+        "verify_fee": ("⚠️ **Are you sure the delivery-fee payment is valid and you want to VERIFY it?**", confirm_verify_fee_kb(order_id)),
+        "reject_fee": ("⚠️ **Are you sure you want to REJECT the delivery-fee payment?**", confirm_reject_fee_kb(order_id)),
+    }
+    prompt, keyboard = prompts[action]
+    original = callback.message.caption if callback.message.caption is not None else (callback.message.text or "")
+    await edit_admin_message(callback.message, f"{original}\n\n{prompt}", keyboard)
+    await callback.answer()
 
 # ==========================================
 # 1. LANGUAGE SELECTION & START
@@ -463,68 +511,21 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
 # --- OWNER VERIFIES DELIVERY FEE ---
 @router.callback_query(F.data.startswith("verify_fee_"))
 async def verify_delivery_fee(callback: CallbackQuery):
-    if callback.from_user.id != OWNER_ID:
-        return await callback.answer("⛔ Unauthorized.", show_alert=True)
-        
-    order_id = callback.data.split("_")[2]
+    order_id = callback.data.removeprefix("verify_fee_")
     order = await get_order(order_id)
-
-    if order.get('status') != 'pending_delivery_fee':
+    if not order or order.get("status") != "pending_delivery_fee":
         return await callback.answer("This fee is already verified or processed.", show_alert=True)
+    await ask_owner_confirmation(callback, order_id, "verify_fee")
 
-    user_id = order['user_id']
-    lang = order.get('language', 'en')
-    t = TEXTS[lang]
-    
-    await update_order_status(order_id, "delivery_fee_paid")
-    
-    remaining_balance = order['total'] - DELIVERY_FEE
-    
-    await callback.bot.send_message(
-        chat_id=user_id,
-        text=t["delivery_verified_msg"].format(remaining=remaining_balance),
-        reply_markup=checkout_type_kb(order_id, lang),
-        parse_mode="Markdown"
-    )
-    
-    if callback.message.caption:
-        await callback.message.edit_caption(
-            caption=callback.message.caption + "\n\n✅ **DELIVERY FEE VERIFIED**",
-            parse_mode="Markdown",
-            reply_markup=None
-        )
-    await callback.answer("Delivery fee verified.")
 
 @router.callback_query(F.data.startswith("reject_fee_"))
 async def reject_delivery_fee(callback: CallbackQuery):
-    if callback.from_user.id != OWNER_ID:
-        return await callback.answer("⛔ Unauthorized.", show_alert=True)
-        
-    order_id = callback.data.split("_")[2]
+    order_id = callback.data.removeprefix("reject_fee_")
     order = await get_order(order_id)
-
-    if order.get('status') != 'pending_delivery_fee':
+    if not order or order.get("status") != "pending_delivery_fee":
         return await callback.answer("This order is already processed.", show_alert=True)
+    await ask_owner_confirmation(callback, order_id, "reject_fee")
 
-    user_id = order['user_id']
-    lang = order.get('language', 'en')
-    t = TEXTS[lang]
-    
-    await update_order_status(order_id, "rejected")
-    
-    await callback.bot.send_message(
-        chat_id=user_id,
-        text=t["order_rejected"].format(phone=OWNER_PHONE),
-        parse_mode="Markdown"
-    )
-    
-    if callback.message.caption:
-        await callback.message.edit_caption(
-            caption=callback.message.caption + "\n\n❌ **REJECTED**",
-            parse_mode="Markdown",
-            reply_markup=None
-        )
-    await callback.answer("Order rejected.")
 
 # --- COD FLOW ---
 @router.callback_query(F.data.startswith("checkout_cod_"))
@@ -684,7 +685,7 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
             photo=message.photo[-1].file_id,
             caption=owner_msg,
             parse_mode="Markdown", 
-            reply_markup=pay_now_verify_kb(order_id)
+            reply_markup=admin_verify_kb(order_id)
         )
     except Exception as e:
         print(f"Failed to send final proof to owner: {e}")
@@ -722,7 +723,9 @@ async def my_orders(callback: CallbackQuery, state: FSMContext):
         else:
             display_status = display_status.replace('_', ' ').title()
         
-        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{display_status}**\n"
+        _, remaining_due, fee_paid = order_payment_summary(o)
+        due_label = "Remaining" if fee_paid else "Total due"
+        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{display_status}**\n   {due_label}: {remaining_due:g} ETB\n"
         
     try:
         await callback.message.edit_text(text, reply_markup=user_orders_kb(orders, lang), parse_mode="Markdown")
@@ -753,10 +756,9 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
         if now - order_time > timedelta(hours=24):
             return await callback.answer(t["cannot_cancel_24h"], show_alert=True)
 
-    await update_order_status(order_id, "cancelled")
-    for item in order.get("items", []):
-        await increment_stock(item["product_id"], item.get("qty", 1))
-        
+    cancellation_status = "cancelled_after_fee" if order.get("status") in DELIVERY_FEE_PAID_STATUSES else "cancelled"
+    await update_order_status(order_id, cancellation_status)
+    # Stock is deducted only when an order is completed, so do not increment it here.
     item_name = order['items'][0]['name']
     
     cancel_msg = t["owner_cancel_notice"].format(
@@ -844,55 +846,169 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
         
     await callback.answer(f"Delivery set to {days} day(s).")
 
-@router.callback_query(F.data.startswith("admin_complete_"))
-async def complete_order(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id != OWNER_ID:
-        return await callback.answer("⛔ Unauthorized.", show_alert=True)
-        
-    order_id = callback.data.split("_")[2]
+@router.callback_query(F.data.startswith("admin_approve_"))
+async def request_payment_approval(callback: CallbackQuery):
+    order_id = callback.data.removeprefix("admin_approve_")
     order = await get_order(order_id)
-    
+    if not order or order.get("status") != "pending_payment":
+        return await callback.answer("This order is not awaiting payment approval.", show_alert=True)
+    await ask_owner_confirmation(callback, order_id, "approve")
+
+
+@router.callback_query(F.data.startswith("admin_reject_"))
+async def request_payment_rejection(callback: CallbackQuery):
+    order_id = callback.data.removeprefix("admin_reject_")
+    order = await get_order(order_id)
+    if not order or order.get("status") in TERMINAL_ORDER_STATUSES:
+        return await callback.answer("This order has already been processed.", show_alert=True)
+    await ask_owner_confirmation(callback, order_id, "reject")
+
+
+@router.callback_query(F.data.startswith("admin_complete_"))
+async def request_order_completion(callback: CallbackQuery):
+    order_id = callback.data.removeprefix("admin_complete_")
+    order = await get_order(order_id)
+    if not order or order.get("status") in TERMINAL_ORDER_STATUSES:
+        return await callback.answer("This order cannot be completed.", show_alert=True)
+    if order.get("status") not in {"paid", "cod_pending", "delivery_fee_paid"}:
+        return await callback.answer("Approve payment / confirm COD before completing this order.", show_alert=True)
+    await ask_owner_confirmation(callback, order_id, "complete")
+
+
+@router.callback_query(F.data.startswith("admin_cancel_"))
+async def request_order_cancellation(callback: CallbackQuery):
+    order_id = callback.data.removeprefix("admin_cancel_")
+    order = await get_order(order_id)
+    if not order or order.get("status") in TERMINAL_ORDER_STATUSES:
+        return await callback.answer("This order has already been processed.", show_alert=True)
+    await ask_owner_confirmation(callback, order_id, "cancel")
+
+
+@router.callback_query(F.data.startswith("confirm_approve_"))
+@router.callback_query(F.data.startswith("confirm_reject_"))
+@router.callback_query(F.data.startswith("confirm_complete_"))
+@router.callback_query(F.data.startswith("confirm_cancel_"))
+@router.callback_query(F.data.startswith("confirm_verify_fee_"))
+@router.callback_query(F.data.startswith("confirm_reject_fee_"))
+async def process_confirmed_admin_action(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ You are not the owner.", show_alert=True)
+
+    # Callback values are confirm_<action>_<order_id>; Mongo IDs contain no underscores.
+    parts = callback.data.split("_", 2)
+    if len(parts) != 3:
+        return await callback.answer()
+    action, order_id = parts[1], parts[2]
+    order = await get_order(order_id)
     if not order:
         return await callback.answer("Order not found.", show_alert=True)
-        
-    await update_order_status(order_id, "delivered")
-    
-    for item in order.get("items", []):
-        await decrement_stock(item["product_id"], item.get("qty", 1))
-        
-    user_id = order['user_id']
-    
-    lang = order.get('language', 'en')
-    t = TEXTS[lang]
-    
-    user_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
-    ])
-    
-    try:
-        await callback.bot.send_message(
-            chat_id=user_id,
-            text=t["order_completed"],
-            parse_mode="Markdown",
-            reply_markup=user_kb
-        )
-    except Exception as e:
-        print(f"Failed to notify user: {e}")
-        
-    if callback.message.caption:
-        await callback.message.edit_caption(
-            caption=callback.message.caption + "\n\n✅ **COMPLETED**",
-            parse_mode="Markdown",
-            reply_markup=None
-        )
+
+    status = order.get("status")
+    user_id = order["user_id"]
+    lang = order.get("language", "en")
+    t = TEXTS.get(lang, TEXTS["en"])
+    items = order.get("items", [])
+    item = items[0] if items else {"name": "your item"}
+
+    if action == "approve":
+        if status != "pending_payment":
+            return await callback.answer("This payment is no longer awaiting approval.", show_alert=True)
+        await update_order_status(order_id, "paid")
+        try:
+            await callback.bot.send_message(
+                chat_id=user_id,
+                text=f"🎉 **Payment Confirmed!**\nOrder `{order_id}` is now being processed.",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to notify customer about approved payment: {e}")
+        result_text = "✅ **PAYMENT APPROVED SUCCESSFULLY**"
+
+    elif action == "reject":
+        if status in TERMINAL_ORDER_STATUSES:
+            return await callback.answer("This order has already been processed.", show_alert=True)
+        rejection_status = "payment_rejected" if status in DELIVERY_FEE_PAID_STATUSES else "rejected"
+        await update_order_status(order_id, rejection_status)
+        if order.get("payment_method") in ["telebirr", "cbe"] and status == "pending_payment":
+            reject_msg = t["owner_pay_now_rejected"].format(item=item.get("name", "item"), phone=OWNER_PHONE)
+        else:
+            reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
+        try:
+            await callback.bot.send_message(chat_id=user_id, text=reject_msg, parse_mode="Markdown")
+        except Exception as e:
+            print(f"Failed to notify customer about rejection: {e}")
+        result_text = "❌ **ORDER REJECTED SUCCESSFULLY**"
+
+    elif action == "verify_fee":
+        if status != "pending_delivery_fee":
+            return await callback.answer("This delivery fee is no longer awaiting verification.", show_alert=True)
+        await update_order_status(order_id, "delivery_fee_paid")
+        _, remaining, _ = order_payment_summary({**order, "status": "delivery_fee_paid"})
+        try:
+            await callback.bot.send_message(
+                chat_id=user_id,
+                text=t["delivery_verified_msg"].format(remaining=remaining),
+                reply_markup=checkout_type_kb(order_id, lang),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to notify customer about delivery fee verification: {e}")
+        result_text = "✅ **DELIVERY FEE VERIFIED SUCCESSFULLY**"
+
+    elif action == "reject_fee":
+        if status != "pending_delivery_fee":
+            return await callback.answer("This delivery fee is no longer awaiting verification.", show_alert=True)
+        await update_order_status(order_id, "rejected")
+        try:
+            await callback.bot.send_message(
+                chat_id=user_id,
+                text=t["order_rejected"].format(phone=OWNER_PHONE),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to notify customer about rejected delivery fee: {e}")
+        result_text = "❌ **DELIVERY FEE / ORDER REJECTED**"
+
+    elif action == "complete":
+        if status not in {"paid", "cod_pending", "delivery_fee_paid"}:
+            return await callback.answer("This order is not ready to be completed.", show_alert=True)
+        await update_order_status(order_id, "delivered")
+        # This is the only place stock is deducted in this bot.
+        for order_item in items:
+            await decrement_stock(order_item["product_id"], order_item.get("qty", 1))
+        try:
+            await callback.bot.send_message(
+                chat_id=user_id,
+                text=t["order_completed"],
+                parse_mode="Markdown",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
+                ])
+            )
+        except Exception as e:
+            print(f"Failed to notify customer about completion: {e}")
+        result_text = "✅ **ORDER COMPLETED SUCCESSFULLY**"
+
+    elif action == "cancel":
+        if status in TERMINAL_ORDER_STATUSES:
+            return await callback.answer("This order has already been processed.", show_alert=True)
+        cancellation_status = "cancelled_after_fee" if status in DELIVERY_FEE_PAID_STATUSES else "cancelled"
+        await update_order_status(order_id, cancellation_status)
+        try:
+            await callback.bot.send_message(
+                chat_id=user_id,
+                text=f"❌ **Your order `{order_id}` has been cancelled by the shop owner.**\nPlease contact {OWNER_PHONE} if you have questions.",
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to notify customer about cancellation: {e}")
+        result_text = "❌ **ORDER CANCELLED SUCCESSFULLY**"
+
     else:
-        await callback.message.edit_text(
-            text=callback.message.text + "\n\n✅ **COMPLETED**",
-            parse_mode="Markdown",
-            reply_markup=None
-        )
-        
-    await callback.answer("Order marked as completed!")
+        return await callback.answer("Unknown action.", show_alert=True)
+
+    await edit_admin_message(callback.message, result_text, None)
+    await callback.answer("Action confirmed successfully.")
 
 # ==========================================
 # 6. ADMIN: ADD PRODUCT (OWNER ONLY)
@@ -1214,7 +1330,7 @@ async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
             pass
         return await callback.answer()
         
-    text = "📋 **All Orders:**\n\nSelect an order to view details."
+    text = "📋 **All Orders:**\n\nEach order button shows its current amount due. Select an order to view full details."
     kb = admin_orders_kb(orders)
     
     try:
@@ -1227,53 +1343,39 @@ async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
 async def admin_view_order(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
-        
-    order_id = callback.data.split("_")[3]
+
+    order_id = callback.data.removeprefix("admin_view_order_")
     order = await get_order(order_id)
-    
     if not order:
         return await callback.answer("Order not found.", show_alert=True)
-        
-    item = order['items'][0]
-    
-    display_status = order.get('status', 'Unknown')
-    if order.get('payment_method') in ['telebirr', 'cbe'] and display_status in ['pending_payment', 'paid']:
-        display_status = "Paid"
-    elif display_status == 'cod_pending':
-        display_status = "Cash on Delivery"
-    else:
-        display_status = display_status.replace('_', ' ').title()
 
-    # Calculate the amount still owed after the delivery fee.
-    total_amount = order.get("total", 0)
-    remaining_amount = max(total_amount - DELIVERY_FEE, 0)
+    item = order.get("items", [{}])[0] if order.get("items") else {}
+    status = order.get("status", "Unknown")
+    display_status = status.replace("_", " ").title()
+    if status == "cod_pending":
+        display_status = "Cash on Delivery"
+    elif status in {"pending_payment", "paid"} and order.get("payment_method") in ["telebirr", "cbe"]:
+        display_status = "Payment Awaiting Approval" if status == "pending_payment" else "Paid"
+
+    total, remaining, fee_paid = order_payment_summary(order)
+    delivery_status = "Paid / Verified" if fee_paid else "Not yet verified"
+    payment_method = (order.get("payment_method") or "Not selected").replace("_", " ").title()
 
     text = (
-        f"📦 **Order Details**\\n\\n"
-        f"🆔 Order: `{order_id}`\\n"
-        f"👤 Name: {order.get('customer_name')}\\n"
-        f"📞 Phone: {order.get('phone_number')}\\n"
-        f"📍 Address: {order.get('address')}\\n\\n"
-        f"👗 Item: {item['name']} (Size: {item.get('size', 'N/A')})\\n"
-        f"💰 Total: {total_amount} ETB\\n"
-        f"🚚 Delivery Fee: {DELIVERY_FEE} ETB (Paid)\\n"
-        f"💵 **Remaining to Collect: {remaining_amount} ETB**\\n"
-        f"💳 Payment: {order.get('payment_method', 'Unknown').title()}\\n"
+        f"📦 **Order Details**\n\n"
+        f"🆔 Order: `{order_id}`\n"
+        f"👤 Name: {order.get('customer_name', 'N/A')}\n"
+        f"📞 Phone: {order.get('phone_number', 'N/A')}\n"
+        f"📍 Address: {order.get('address', 'N/A')}\n\n"
+        f"👗 Item: {item.get('name', 'N/A')} (Size: {item.get('size', 'N/A')})\n"
+        f"💰 Order Total: {total:g} ETB\n"
+        f"🚚 Delivery Fee: {DELIVERY_FEE} ETB ({delivery_status})\n"
+        f"💵 **Remaining to Collect: {remaining:g} ETB**\n"
+        f"💳 Payment: {payment_method}\n"
         f"📊 Status: {display_status}"
     )
 
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=admin_back_orders_kb(order_id),
-            parse_mode="Markdown"
-        )
-    except Exception:
-        await callback.message.answer(
-            text,
-            reply_markup=admin_back_orders_kb(order_id),
-            parse_mode="Markdown"
-        )
+    await edit_admin_message(callback.message, text, admin_back_orders_kb(order_id, status))
     await callback.answer()
 
 # ==========================================
