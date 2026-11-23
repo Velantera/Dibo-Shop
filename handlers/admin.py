@@ -14,7 +14,6 @@ async def admin_action(callback: CallbackQuery):
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
 
-    # Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
     parts = callback.data.split("_")
     if len(parts) < 3:
         return await callback.answer()
@@ -33,38 +32,57 @@ async def admin_action(callback: CallbackQuery):
 
     # --- APPROVE PAY NOW ---
     if action == "approve":
+        # SAFETY CHECK: Prevent double approval
+        if order.get('status') == 'paid':
+            return await callback.answer("✅ This order is already approved.", show_alert=True)
+            
         await update_order_status(order_id, "paid")
         for item in order.get("items", []):
             await decrement_stock(item["product_id"], item.get("qty", 1))
 
         await callback.bot.send_message(chat_id=user_id, text=f"🎉 **Payment Confirmed!**\nOrder `{order_id}` is now being processed.", parse_mode="Markdown")
-        await callback.message.edit_caption(caption=(callback.message.caption or "") + "\n\n✅ **APPROVED**", parse_mode="Markdown")
+        
+        # Update the caption in the Admin Group
+        await callback.message.edit_caption(
+            caption=(callback.message.caption or "") + f"\n\n✅ **APPROVED by @{callback.from_user.username or callback.from_user.id}**", 
+            parse_mode="Markdown",
+            reply_markup=None # Remove the buttons so no one can click them again
+        )
 
     # --- DELIVER COD ---
     elif action == "delivered":
+        if order.get('status') == 'delivered':
+            return await callback.answer("✅ This order is already marked as delivered.", show_alert=True)
+
         await update_order_status(order_id, "delivered")
         for item in order.get("items", []):
             await decrement_stock(item["product_id"], item.get("qty", 1))
 
         await callback.bot.send_message(chat_id=user_id, text=f"🚚 **Order Delivered!**\nOrder `{order_id}` has been delivered. Thank you!", parse_mode="Markdown")
-        await callback.message.edit_text(text=(callback.message.text or "") + "\n\n✅ **DELIVERED**", parse_mode="Markdown")
+        
+        await callback.message.edit_text(
+            text=(callback.message.text or "") + f"\n\n✅ **DELIVERED by @{callback.from_user.username or callback.from_user.id}**", 
+            parse_mode="Markdown",
+            reply_markup=None
+        )
 
     # --- REJECT / CANCEL ---
     elif action == "reject":
+        if order.get('status') == 'rejected':
+            return await callback.answer("❌ This order is already rejected.", show_alert=True)
+
         await update_order_status(order_id, "rejected")
         
         if order['status'] in ["paid", "delivered"]:
             for item in order.get("items", []):
                 await increment_stock(item["product_id"], item.get("qty", 1))
 
-        # FIXED: Check if it was a Pay Now order (telebirr/cbe) and the status was pending_payment
         if order.get('payment_method') in ['telebirr', 'cbe'] and order.get('status') == "pending_payment":
             reject_msg = t["owner_pay_now_rejected"].format(
                 item=item['name'],
                 phone=OWNER_PHONE
             )
         else:
-            # Fallback for other rejection scenarios (e.g., delivery fee, COD)
             reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
 
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -79,8 +97,16 @@ async def admin_action(callback: CallbackQuery):
         )
         
         if callback.message.caption:
-            await callback.message.edit_caption(caption=callback.message.caption + "\n\n❌ **REJECTED**", parse_mode="Markdown")
+            await callback.message.edit_caption(
+                caption=callback.message.caption + f"\n\n❌ **REJECTED by @{callback.from_user.username or callback.from_user.id}**", 
+                parse_mode="Markdown",
+                reply_markup=None
+            )
         else:
-            await callback.message.edit_text(text=(callback.message.text or "") + "\n\n❌ **REJECTED**", parse_mode="Markdown")
+            await callback.message.edit_text(
+                text=(callback.message.text or "") + f"\n\n❌ **REJECTED by @{callback.from_user.username or callback.from_user.id}**", 
+                parse_mode="Markdown",
+                reply_markup=None
+            )
 
     await callback.answer("Action processed successfully.")
