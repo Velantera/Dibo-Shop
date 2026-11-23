@@ -153,3 +153,19 @@ async def save_user(user_id: int, first_name: str, username: str):
 async def get_all_users():
     cursor = _db.users.find({})
     return await cursor.to_list(length=None)
+
+async def update_order_fields(order_id: str, update_data: dict):
+    try:
+        await _db.orders.update_one(
+            {"_id": ObjectId(order_id)},
+            {
+                "$set": {
+                    **update_data,
+                    "updated_at": datetime.utcnow()
+                }
+            }
+        )
+        return True
+    except Exception as e:
+        print(f"Error updating order fields: {e}")
+        return False
