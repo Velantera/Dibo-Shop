@@ -14,7 +14,6 @@ async def admin_action(callback: CallbackQuery):
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
 
-    # Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
     parts = callback.data.split("_")
     if len(parts) < 3:
         return await callback.answer()
@@ -33,7 +32,6 @@ async def admin_action(callback: CallbackQuery):
 
     # --- APPROVE PAY NOW ---
     if action == "approve":
-        # SAFETY CHECK: Prevent double approval
         if order.get('status') == 'paid':
             return await callback.answer("✅ This order is already approved.", show_alert=True)
             
@@ -43,7 +41,6 @@ async def admin_action(callback: CallbackQuery):
 
         await callback.bot.send_message(chat_id=user_id, text=f"🎉 **Payment Confirmed!**\nOrder `{order_id}` is now being processed.", parse_mode="Markdown")
         
-        # Update the caption and remove buttons
         await callback.message.edit_caption(
             caption=(callback.message.caption or "") + "\n\n✅ **APPROVED**", 
             parse_mode="Markdown",
