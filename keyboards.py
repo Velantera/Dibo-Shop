@@ -10,8 +10,8 @@ def payment_method_kb(order_id: str):
 
 def admin_verify_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Approve Payment", callback_data=f"admin_approve_{order_id}"),
-        InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}"),
+        InlineKeyboardButton(text="✅ Approve", callback_data=f"admin_approve_{order_id}"),
+        InlineKeyboardButton(text="❌ Reject", callback_data=f"admin_reject_{order_id}"),
     ]])
 
 
@@ -47,8 +47,8 @@ def complete_order_kb(order_id: str):
 
 def verify_delivery_fee_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Verify Delivery Fee", callback_data=f"verify_fee_{order_id}"),
-        InlineKeyboardButton(text="❌ Reject Fee", callback_data=f"reject_fee_{order_id}"),
+        InlineKeyboardButton(text="✅ Approve", callback_data=f"verify_fee_{order_id}"),
+        InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_fee_{order_id}"),
     ]])
 
 
