@@ -1,6 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from config import OWNER_IDS
+from config import OWNER_ID
 from database import get_order, update_order_status, decrement_stock, increment_stock
 from locales import TEXTS
 
@@ -10,10 +10,11 @@ OWNER_PHONE = "+251927982723"
 
 @router.callback_query(F.data.startswith("admin_"))
 async def admin_action(callback: CallbackQuery):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
 
+    # Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
     parts = callback.data.split("_")
     if len(parts) < 3:
         return await callback.answer()
@@ -42,11 +43,11 @@ async def admin_action(callback: CallbackQuery):
 
         await callback.bot.send_message(chat_id=user_id, text=f"🎉 **Payment Confirmed!**\nOrder `{order_id}` is now being processed.", parse_mode="Markdown")
         
-        # Update the caption in the Admin Group
+        # Update the caption and remove buttons
         await callback.message.edit_caption(
-            caption=(callback.message.caption or "") + f"\n\n✅ **APPROVED by @{callback.from_user.username or callback.from_user.id}**", 
+            caption=(callback.message.caption or "") + "\n\n✅ **APPROVED**", 
             parse_mode="Markdown",
-            reply_markup=None # Remove the buttons so no one can click them again
+            reply_markup=None
         )
 
     # --- DELIVER COD ---
@@ -61,7 +62,7 @@ async def admin_action(callback: CallbackQuery):
         await callback.bot.send_message(chat_id=user_id, text=f"🚚 **Order Delivered!**\nOrder `{order_id}` has been delivered. Thank you!", parse_mode="Markdown")
         
         await callback.message.edit_text(
-            text=(callback.message.text or "") + f"\n\n✅ **DELIVERED by @{callback.from_user.username or callback.from_user.id}**", 
+            text=(callback.message.text or "") + "\n\n✅ **DELIVERED**", 
             parse_mode="Markdown",
             reply_markup=None
         )
@@ -98,13 +99,13 @@ async def admin_action(callback: CallbackQuery):
         
         if callback.message.caption:
             await callback.message.edit_caption(
-                caption=callback.message.caption + f"\n\n❌ **REJECTED by @{callback.from_user.username or callback.from_user.id}**", 
+                caption=callback.message.caption + "\n\n❌ **REJECTED**", 
                 parse_mode="Markdown",
                 reply_markup=None
             )
         else:
             await callback.message.edit_text(
-                text=(callback.message.text or "") + f"\n\n❌ **REJECTED by @{callback.from_user.username or callback.from_user.id}**", 
+                text=(callback.message.text or "") + "\n\n❌ **REJECTED**", 
                 parse_mode="Markdown",
                 reply_markup=None
             )
