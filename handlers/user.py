@@ -7,7 +7,7 @@ from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, decrement_stock,
-    get_all_orders, save_user, update_payment_method  # <-- IMPORTED HERE
+    get_all_orders, save_user, update_payment_method, claim_delivery_schedule
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
@@ -802,16 +802,31 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
         return await callback.answer("Invalid delivery selection.", show_alert=True)
 
     days, order_id = parts[1], parts[2]
-    order = await get_order(order_id)
-    if not order:
+    existing_order = await get_order(order_id)
+    if not existing_order:
         return await callback.answer("Order not found.", show_alert=True)
-    if order.get("status") not in DELIVERY_ELIGIBLE_STATUSES:
-        return await callback.answer("Approve payment or confirm COD before setting delivery.", show_alert=True)
 
-    user_id = order["user_id"]
-    lang = order.get("language", "en")
+    lang = existing_order.get("language", "en")
     t = TEXTS.get(lang, TEXTS["en"])
     delivery_text = t.get(f"delivery_time_{days}", f"{days} day(s)")
+
+    # Atomic MongoDB claim: only the first admin can set the delivery estimate.
+    order = await claim_delivery_schedule(order_id, int(days), delivery_text)
+    if not order:
+        latest_order = await get_order(order_id)
+        if latest_order and latest_order.get("delivery_days") is not None:
+            selected_days = latest_order.get("delivery_days")
+            selected_text = latest_order.get("delivery_time_text") or f"{selected_days} day(s)"
+            return await callback.answer(
+                f"Delivery was already set to {selected_text} by the other owner.",
+                show_alert=True,
+            )
+        return await callback.answer(
+            "This order is no longer eligible for delivery scheduling.",
+            show_alert=True,
+        )
+
+    user_id = order["user_id"]
     user_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=t.get("btn_main_menu", "Main Menu"), callback_data="menu_main")
     ]])
@@ -828,7 +843,7 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         print(f"Failed to notify customer about delivery time: {e}")
 
-    item = order.get("items", [{}])[0]
+    item = order.get("items", [{}])[0] if order.get("items") else {}
     owner_msg = TEXTS["en"].get(
         "owner_order_updated",
         "Order {order_id} updated\nCustomer: {name}\nPhone: {phone}\nAddress: {address}\nItem: {item}\nSize: {size}\nRemaining: {remaining} ETB\nPayment: {payment}\nDelivery: {days}"
@@ -840,13 +855,12 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
         item=item.get("name", "N/A"),
         size=item.get("size", "N/A"),
         remaining=order_payment_summary(order)[1],
-        payment=order.get("payment_method") or "COD",
+        payment="Cash" if order.get("payment_method") == "cod" else (order.get("payment_method") or "Cash"),
         days=delivery_text
     )
 
     await edit_admin_message(callback.message, owner_msg, complete_order_kb(order_id))
     await callback.answer(f"Delivery set to {days} day(s).")
-
 
 @router.callback_query(F.data.startswith("admin_approve_"))
 async def request_payment_approval(callback: CallbackQuery):
