@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.filters import StateFilter
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -968,7 +969,11 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
         try:
             await callback.bot.send_message(
                 chat_id=user_id,
-                text=f"🎉 **Payment Confirmed!**\n\nYour payment for order `{order_id}` has been verified successfully. We are preparing your order.",
+                text=(
+                    f"🎉 **Payment Confirmed!**\n\n"
+                    f"Your payment for *{item.get('name', 'your item')}* has been verified successfully. "
+                    "We are preparing your order."
+                ),
                 parse_mode="Markdown"
             )
         except Exception as e:
@@ -982,7 +987,10 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
         rejection_status = "payment_rejected" if status in DELIVERY_FEE_PAID_STATUSES else "rejected"
         await update_order_status(order_id, rejection_status)
         if order.get("payment_method") in {"telebirr", "cbe"} and status == "pending_payment":
-            reject_msg = t.get("owner_pay_now_rejected", "Your payment was rejected. Please contact {phone}.").format(item=item.get("name", "item"), phone=OWNER_PHONE)
+            reject_msg = t.get(
+                "owner_pay_now_rejected",
+                "Your payment for *{item}* was rejected. Please contact {phone}."
+            ).format(item=f"*{item.get('name', 'your item')}*", phone=OWNER_PHONE)
         else:
             reject_msg = t.get("order_rejected", "Your order was rejected. Please contact {phone}.").format(phone=OWNER_PHONE)
         try:
@@ -1442,7 +1450,26 @@ async def admin_view_order(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 # ==========================================
-# 9. CATCH-ALL HANDLER (Fallback for random text)
+# 9. OWNER FALLBACK: RETURN TO DASHBOARD
+# ==========================================
+@router.message(StateFilter(None), lambda message: bool(message.from_user and is_admin(message.from_user.id)))
+async def owner_random_message_fallback(message: Message, state: FSMContext):
+    """For idle owners, any unhandled message returns the dashboard, like /start."""
+    await state.clear()
+    await save_user(
+        message.from_user.id,
+        message.from_user.first_name or "",
+        message.from_user.username or ""
+    )
+    await message.answer(
+        "👑 **Owner Dashboard**\n\nManage your shop below:",
+        reply_markup=owner_dashboard_kb(),
+        parse_mode="Markdown"
+    )
+
+
+# ==========================================
+# 10. CATCH-ALL HANDLER (Fallback for customers)
 # ==========================================
 @router.message(F.text)
 async def catch_all_text(message: Message, state: FSMContext):
