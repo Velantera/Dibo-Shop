@@ -785,70 +785,69 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 5. ADMIN: DELIVERY & COMPLETION HANDLERS
 # ==========================================
+DELIVERY_ELIGIBLE_STATUSES = {"paid", "cod_pending"}
+
+
 @router.callback_query(F.data.startswith("deliver_"))
 async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
-        
-    parts = callback.data.split("_")
-    days = parts[1]
-    order_id = parts[2]
-    
+
+    parts = callback.data.split("_", 2)
+    if len(parts) != 3 or parts[1] not in {"1", "2", "3"}:
+        return await callback.answer("Invalid delivery selection.", show_alert=True)
+
+    days, order_id = parts[1], parts[2]
     order = await get_order(order_id)
     if not order:
         return await callback.answer("Order not found.", show_alert=True)
-        
-    user_id = order['user_id']
-    item = order['items'][0]
-    
-    lang = order.get('language', 'en')
-    t = TEXTS[lang]
-    delivery_text = t[f"delivery_time_{days}"]
-    
-    user_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
-    ])
-    
+    if order.get("status") not in DELIVERY_ELIGIBLE_STATUSES:
+        return await callback.answer("Approve payment or confirm COD before setting delivery.", show_alert=True)
+
+    user_id = order["user_id"]
+    lang = order.get("language", "en")
+    t = TEXTS.get(lang, TEXTS["en"])
+    delivery_text = t.get(f"delivery_time_{days}", f"{days} day(s)")
+    user_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=t.get("btn_main_menu", "Main Menu"), callback_data="menu_main")
+    ]])
+
     try:
         await callback.bot.send_message(
             chat_id=user_id,
-            text=t["delivery_notified"].format(days=delivery_text, phone=OWNER_PHONE),
+            text=t.get("delivery_notified", "Your order is expected to arrive in {days}. Contact {phone}.").format(
+                days=delivery_text, phone=OWNER_PHONE
+            ),
             parse_mode="Markdown",
             reply_markup=user_kb
         )
     except Exception as e:
-        print(f"Failed to notify user: {e}")
+        print(f"Failed to notify customer about delivery time: {e}")
 
-    t_en = TEXTS["en"]
-    owner_msg = t_en["owner_order_updated"].format(
+    item = order.get("items", [{}])[0]
+    owner_msg = TEXTS["en"].get(
+        "owner_order_updated",
+        "Order {order_id} updated\nCustomer: {name}\nPhone: {phone}\nAddress: {address}\nItem: {item}\nSize: {size}\nRemaining: {remaining} ETB\nPayment: {payment}\nDelivery: {days}"
+    ).format(
         order_id=order_id,
-        name=order.get('customer_name'),
-        phone=order.get('phone_number'),
-        address=order.get('address'),
-        item=item['name'],
-        size=item.get('size', 'N/A'),
-        remaining=order['total'] - DELIVERY_FEE,
-        payment=order.get('payment_method', 'COD'),
+        name=order.get("customer_name", "N/A"),
+        phone=order.get("phone_number", "N/A"),
+        address=order.get("address", "N/A"),
+        item=item.get("name", "N/A"),
+        size=item.get("size", "N/A"),
+        remaining=order_payment_summary(order)[1],
+        payment=order.get("payment_method") or "COD",
         days=delivery_text
     )
-    
-    if callback.message.caption:
-        await callback.message.edit_caption(
-            caption=owner_msg,
-            reply_markup=complete_order_kb(order_id),
-            parse_mode="Markdown"
-        )
-    else:
-        await callback.message.edit_text(
-            text=owner_msg,
-            reply_markup=complete_order_kb(order_id),
-            parse_mode="Markdown"
-        )
-        
+
+    await edit_admin_message(callback.message, owner_msg, complete_order_kb(order_id))
     await callback.answer(f"Delivery set to {days} day(s).")
+
 
 @router.callback_query(F.data.startswith("admin_approve_"))
 async def request_payment_approval(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
     order_id = callback.data.removeprefix("admin_approve_")
     order = await get_order(order_id)
     if not order or order.get("status") != "pending_payment":
@@ -858,6 +857,8 @@ async def request_payment_approval(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_reject_"))
 async def request_payment_rejection(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
     order_id = callback.data.removeprefix("admin_reject_")
     order = await get_order(order_id)
     if not order or order.get("status") in TERMINAL_ORDER_STATUSES:
@@ -867,17 +868,21 @@ async def request_payment_rejection(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_complete_"))
 async def request_order_completion(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
     order_id = callback.data.removeprefix("admin_complete_")
     order = await get_order(order_id)
     if not order or order.get("status") in TERMINAL_ORDER_STATUSES:
         return await callback.answer("This order cannot be completed.", show_alert=True)
-    if order.get("status") not in {"paid", "cod_pending", "delivery_fee_paid"}:
+    if order.get("status") not in DELIVERY_ELIGIBLE_STATUSES:
         return await callback.answer("Approve payment / confirm COD before completing this order.", show_alert=True)
     await ask_owner_confirmation(callback, order_id, "complete")
 
 
 @router.callback_query(F.data.startswith("admin_cancel_"))
 async def request_order_cancellation(callback: CallbackQuery):
+    if callback.from_user.id != OWNER_ID:
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
     order_id = callback.data.removeprefix("admin_cancel_")
     order = await get_order(order_id)
     if not order or order.get("status") in TERMINAL_ORDER_STATUSES:
@@ -895,8 +900,6 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
     if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ You are not the owner.", show_alert=True)
 
-    # Some actions contain underscores (verify_fee, reject_fee).
-    # Match the complete action prefix before extracting the order ID.
     payload = callback.data.removeprefix("confirm_")
     action = None
     order_id = None
@@ -909,6 +912,7 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
 
     if not action or not order_id:
         return await callback.answer("Invalid confirmation callback.", show_alert=True)
+
     order = await get_order(order_id)
     if not order:
         return await callback.answer("Order not found.", show_alert=True)
@@ -927,27 +931,28 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
         try:
             await callback.bot.send_message(
                 chat_id=user_id,
-                text=f"🎉 **Payment Confirmed!**\nOrder `{order_id}` is now being processed.",
+                text=f"🎉 **Payment Confirmed!**\n\nYour payment for order `{order_id}` has been verified successfully. We are preparing your order.",
                 parse_mode="Markdown"
             )
         except Exception as e:
             print(f"Failed to notify customer about approved payment: {e}")
-        result_text = "✅ **PAYMENT APPROVED SUCCESSFULLY**"
+        result_text = "✅ **PAYMENT APPROVED SUCCESSFULLY**\n\nSelect the estimated delivery time below:"
+        result_markup = delivery_time_kb(order_id)
 
     elif action == "reject":
         if status in TERMINAL_ORDER_STATUSES:
             return await callback.answer("This order has already been processed.", show_alert=True)
         rejection_status = "payment_rejected" if status in DELIVERY_FEE_PAID_STATUSES else "rejected"
         await update_order_status(order_id, rejection_status)
-        if order.get("payment_method") in ["telebirr", "cbe"] and status == "pending_payment":
-            reject_msg = t["owner_pay_now_rejected"].format(item=item.get("name", "item"), phone=OWNER_PHONE)
+        if order.get("payment_method") in {"telebirr", "cbe"} and status == "pending_payment":
+            reject_msg = t.get("owner_pay_now_rejected", "Your payment was rejected. Please contact {phone}.").format(item=item.get("name", "item"), phone=OWNER_PHONE)
         else:
-            reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
+            reject_msg = t.get("order_rejected", "Your order was rejected. Please contact {phone}.").format(phone=OWNER_PHONE)
         try:
             await callback.bot.send_message(chat_id=user_id, text=reject_msg, parse_mode="Markdown")
         except Exception as e:
             print(f"Failed to notify customer about rejection: {e}")
-        result_text = "❌ **ORDER REJECTED SUCCESSFULLY**"
+        result_text, result_markup = "❌ **ORDER REJECTED SUCCESSFULLY**", None
 
     elif action == "verify_fee":
         if status != "pending_delivery_fee":
@@ -957,13 +962,13 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
         try:
             await callback.bot.send_message(
                 chat_id=user_id,
-                text=t["delivery_verified_msg"].format(remaining=remaining),
+                text=t.get("delivery_verified_msg", "Delivery fee verified. Remaining balance: {remaining} ETB.").format(remaining=remaining),
                 reply_markup=checkout_type_kb(order_id, lang),
                 parse_mode="Markdown"
             )
         except Exception as e:
             print(f"Failed to notify customer about delivery fee verification: {e}")
-        result_text = "✅ **DELIVERY FEE VERIFIED SUCCESSFULLY**"
+        result_text, result_markup = "✅ **DELIVERY FEE VERIFIED SUCCESSFULLY**", None
 
     elif action == "reject_fee":
         if status != "pending_delivery_fee":
@@ -972,32 +977,31 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
         try:
             await callback.bot.send_message(
                 chat_id=user_id,
-                text=t["order_rejected"].format(phone=OWNER_PHONE),
+                text=t.get("order_rejected", "Your order was rejected. Please contact {phone}.").format(phone=OWNER_PHONE),
                 parse_mode="Markdown"
             )
         except Exception as e:
             print(f"Failed to notify customer about rejected delivery fee: {e}")
-        result_text = "❌ **DELIVERY FEE / ORDER REJECTED**"
+        result_text, result_markup = "❌ **DELIVERY FEE / ORDER REJECTED**", None
 
     elif action == "complete":
-        if status not in {"paid", "cod_pending", "delivery_fee_paid"}:
+        if status not in DELIVERY_ELIGIBLE_STATUSES:
             return await callback.answer("This order is not ready to be completed.", show_alert=True)
         await update_order_status(order_id, "delivered")
-        # This is the only place stock is deducted in this bot.
         for order_item in items:
             await decrement_stock(order_item["product_id"], order_item.get("qty", 1))
         try:
             await callback.bot.send_message(
                 chat_id=user_id,
-                text=t["order_completed"],
+                text=t.get("order_completed", "Your order has been completed."),
                 parse_mode="Markdown",
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
-                ])
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=t.get("btn_main_menu", "Main Menu"), callback_data="menu_main")
+                ]])
             )
         except Exception as e:
             print(f"Failed to notify customer about completion: {e}")
-        result_text = "✅ **ORDER COMPLETED SUCCESSFULLY**"
+        result_text, result_markup = "✅ **ORDER COMPLETED SUCCESSFULLY**", None
 
     elif action == "cancel":
         if status in TERMINAL_ORDER_STATUSES:
@@ -1012,12 +1016,12 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
             )
         except Exception as e:
             print(f"Failed to notify customer about cancellation: {e}")
-        result_text = "❌ **ORDER CANCELLED SUCCESSFULLY**"
+        result_text, result_markup = "❌ **ORDER CANCELLED SUCCESSFULLY**", None
 
     else:
         return await callback.answer("Unknown action.", show_alert=True)
 
-    await edit_admin_message(callback.message, result_text, None)
+    await edit_admin_message(callback.message, result_text, result_markup)
     await callback.answer("Action confirmed successfully.")
 
 # ==========================================
