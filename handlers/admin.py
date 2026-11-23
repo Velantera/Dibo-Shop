@@ -14,7 +14,7 @@ async def admin_action(callback: CallbackQuery):
         await callback.answer("⛔ You are not the owner.", show_alert=True)
         return
 
-    # FIX: Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
+    # Ignore buttons that don't have an order ID (like admin_broadcast, admin_all_orders, etc.)
     parts = callback.data.split("_")
     if len(parts) < 3:
         return await callback.answer()
@@ -57,12 +57,14 @@ async def admin_action(callback: CallbackQuery):
             for item in order.get("items", []):
                 await increment_stock(item["product_id"], item.get("qty", 1))
 
-        if order.get('payment_method') == "pending_payment":
+        # FIXED: Check if it was a Pay Now order (telebirr/cbe) and the status was pending_payment
+        if order.get('payment_method') in ['telebirr', 'cbe'] and order.get('status') == "pending_payment":
             reject_msg = t["owner_pay_now_rejected"].format(
                 item=item['name'],
                 phone=OWNER_PHONE
             )
         else:
+            # Fallback for other rejection scenarios (e.g., delivery fee, COD)
             reject_msg = t["order_rejected"].format(phone=OWNER_PHONE)
 
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
