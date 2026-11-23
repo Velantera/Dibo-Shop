@@ -97,24 +97,24 @@ def _confirmation(order_id: str, yes_text: str, yes_action: str):
 
 
 def confirm_approve_kb(order_id: str):
-    return _confirmation(order_id, "✅ YES, APPROVE", "approve")
+    return _confirmation(order_id, "✅ YES", "approve")
 
 
 def confirm_reject_kb(order_id: str):
-    return _confirmation(order_id, "❌ YES, REJECT", "reject")
+    return _confirmation(order_id, "❌ YES", "reject")
 
 
 def confirm_complete_kb(order_id: str):
-    return _confirmation(order_id, "✅ YES, COMPLETE", "complete")
+    return _confirmation(order_id, "✅ YES", "complete")
 
 
 def confirm_cancel_kb(order_id: str):
-    return _confirmation(order_id, "❌ YES, CANCEL", "cancel")
+    return _confirmation(order_id, "❌ YES", "cancel")
 
 
 def confirm_verify_fee_kb(order_id: str):
-    return _confirmation(order_id, "✅ YES, VERIFY FEE", "verify_fee")
+    return _confirmation(order_id, "✅ YES", "verify_fee")
 
 
 def confirm_reject_fee_kb(order_id: str):
-    return _confirmation(order_id, "❌ YES, REJECT FEE", "reject_fee")
+    return _confirmation(order_id, "❌ YES", "reject_fee")
