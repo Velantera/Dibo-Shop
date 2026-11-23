@@ -72,7 +72,7 @@ def owner_dashboard_kb():
     return with_owner_main_menu(InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
         [
-            InlineKeyboardButton(text="➕ Add New Product", callback_data="admin_add_product"),
+            InlineKeyboardButton(text="➕ Add New", callback_data="admin_add_product"),
             InlineKeyboardButton(text="📝 Edit Products", callback_data="admin_edit_products")
         ],
         [InlineKeyboardButton(text="📢 Broadcast Message (Coming Soon)", callback_data="admin_broadcast")]
@@ -516,7 +516,7 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
                 chat_id=admin_id,
                 photo=message.photo[-1].file_id,
                 caption=t["owner_delivery_proof"].format(
-                    order_id=order_id,
+                    order_id=(order.get("items") or [{}])[0].get("name", "Dress"),
                     name=order.get('customer_name'),
                     phone=order.get('phone_number'),
                     username=username
@@ -563,7 +563,7 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
         item = order['items'][0]
         
         owner_msg = t["owner_new_order"].format(
-            order_id=order_id,
+            order_id=item.get("name", "Dress"),
             name=order.get('customer_name'),
             phone=order.get('phone_number'),
             address=order.get('address'),
@@ -690,7 +690,7 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
     item = order['items'][0]
 
     owner_msg = t["owner_pay_now_proof"].format(
-        order_id=order_id,
+        order_id=item.get("name", "Dress"),
         name=order.get('customer_name'),
         phone=order.get('phone_number'),
         address=order.get('address'),
@@ -1187,47 +1187,78 @@ async def cancel_post(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 # 7. ADMIN: EDIT & DELETE PRODUCT (OWNER ONLY)
 # ==========================================
+async def send_product_number_list(message: Message, state: FSMContext):
+    """Show a numbered snapshot and retain the corresponding database IDs in FSM data."""
+    products = await get_all_products()
+    if not products:
+        await message.answer("No products found in DB.", reply_markup=owner_main_menu_kb())
+        return False
+
+    product_ids = [str(product["_id"]) for product in products]
+    lines = ["Send the **Product Number** you want to edit/delete:\n"]
+    for number, product in enumerate(products, start=1):
+        lines.append(
+            f"{number} — {product.get('name', 'Unnamed Product')} "
+            f"(Stock: {product.get('stock', 0)}, Price: {product.get('price', 0)})"
+        )
+
+    await state.update_data(product_ids=product_ids)
+    await message.answer(
+        "\n".join(lines),
+        reply_markup=owner_main_menu_kb(),
+        parse_mode="Markdown"
+    )
+    await state.set_state(EditProductState.waiting_id)
+    return True
+
+
 @router.callback_query(F.data == "admin_edit_products")
 async def cb_editproduct(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
-        
-    products = await get_all_products()
-    if not products:
-        return await callback.message.answer("No products found in DB.", reply_markup=owner_main_menu_kb())
-    
-    text = "Send the **Product ID** you want to edit/delete:\n\n"
-    for p in products:
-        text += f"`{p['_id']}` — {p['name']} (Stock: {p['stock']}, Price: {p['price']})\n"
-    
-    await callback.message.answer(text, reply_markup=owner_main_menu_kb(), parse_mode="Markdown")
-    await state.set_state(EditProductState.waiting_id)
+
+    await send_product_number_list(callback.message, state)
     await callback.answer()
+
 
 @router.message(F.text == "/editproduct")
 async def cmd_editproduct(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ Unauthorized.")
-        
-    products = await get_all_products()
-    if not products:
-        return await message.answer("No products found in DB.", reply_markup=owner_main_menu_kb())
-    
-    text = "Send the **Product ID** you want to edit/delete:\n\n"
-    for p in products:
-        text += f"`{p['_id']}` — {p['name']} (Stock: {p['stock']}, Price: {p['price']})\n"
-    
-    await message.answer(text, reply_markup=owner_main_menu_kb(), parse_mode="Markdown")
-    await state.set_state(EditProductState.waiting_id)
+
+    await send_product_number_list(message, state)
+
 
 @router.message(EditProductState.waiting_id)
 async def edit_id(message: Message, state: FSMContext):
-    if not is_admin(message.from_user.id): return
-    product = await get_product(message.text.strip())
+    if not is_admin(message.from_user.id):
+        return
+
+    data = await state.get_data()
+    product_ids = data.get("product_ids", [])
+    try:
+        product_number = int((message.text or "").strip())
+    except (TypeError, ValueError):
+        return await message.answer(
+            f"❌ Please enter a valid product number between 1 and {len(product_ids)}.",
+            reply_markup=owner_main_menu_kb()
+        )
+
+    if product_number < 1 or product_number > len(product_ids):
+        return await message.answer(
+            f"❌ Product number out of range. Enter a number between 1 and {len(product_ids)}.",
+            reply_markup=owner_main_menu_kb()
+        )
+
+    product_id = product_ids[product_number - 1]
+    product = await get_product(product_id)
     if not product:
-        return await message.answer("❌ Invalid ID. Try again.", reply_markup=owner_main_menu_kb())
-    
-    await state.update_data(edit_id=message.text.strip(), product_name=product['name'])
+        return await message.answer(
+            "❌ That product is no longer available. Please open Edit Products again.",
+            reply_markup=owner_main_menu_kb()
+        )
+
+    await state.update_data(edit_id=product_id, product_name=product['name'])
     
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🖼 Update Photo", callback_data="edit_photo")],
