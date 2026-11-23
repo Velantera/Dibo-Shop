@@ -7,7 +7,7 @@ from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
     get_order, update_order_details, increment_stock, decrement_stock,
-    get_all_orders, save_user
+    get_all_orders, save_user, update_payment_method  # <-- IMPORTED HERE
 )
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
@@ -90,7 +90,6 @@ async def cmd_start(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
     ])
     
-    # Send to primary owner
     try:
         await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
     except Exception as e:
@@ -442,7 +441,6 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     
     order = await get_order(order_id)
     
-    # Send to Primary Owner
     try:
         await message.bot.send_photo(
             chat_id=OWNER_ID, 
@@ -471,7 +469,6 @@ async def verify_delivery_fee(callback: CallbackQuery):
     order_id = callback.data.split("_")[2]
     order = await get_order(order_id)
 
-    # Safety check
     if order.get('status') != 'pending_delivery_fee':
         return await callback.answer("This fee is already verified or processed.", show_alert=True)
 
@@ -555,7 +552,6 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             payment="Cash on Delivery"
         )
         
-        # Send to Primary Owner
         try:
             await callback.bot.send_message(
                 chat_id=OWNER_ID,
@@ -631,7 +627,10 @@ async def select_payment(callback: CallbackQuery, state: FSMContext):
     account_info = PAYMENT_ACCOUNTS.get(method, "Account info not configured.")
     
     remaining_balance = order['total'] - DELIVERY_FEE
+    
+    # FIX: Update BOTH the status AND the payment_method in the database!
     await update_order_status(order_id, "pending_payment")
+    await update_payment_method(order_id, method) 
 
     try:
         await callback.message.edit_caption(
@@ -679,7 +678,6 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
         payment="Pay Now (Item Verified)"
     )
 
-    # Send to Primary Owner
     try:
         await message.bot.send_photo(
             chat_id=OWNER_ID, 
@@ -716,7 +714,6 @@ async def my_orders(callback: CallbackQuery, state: FSMContext):
         item = o['items'][0] if o.get('items') else {}
         size_text = f" (Size: {item.get('size')})" if item.get('size') else ""
         
-        # Clean status display for User
         display_status = o['status']
         if o.get('payment_method') in ['telebirr', 'cbe'] and o['status'] in ['pending_payment', 'paid']:
             display_status = "Paid"
@@ -770,7 +767,6 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
         item=item_name
     )
     
-    # Send to Primary Owner
     try:
         await callback.bot.send_message(
             chat_id=OWNER_ID,
@@ -1240,7 +1236,6 @@ async def admin_view_order(callback: CallbackQuery, state: FSMContext):
         
     item = order['items'][0]
     
-    # Clean status display
     display_status = order.get('status', 'Unknown')
     if order.get('payment_method') in ['telebirr', 'cbe'] and display_status in ['pending_payment', 'paid']:
         display_status = "Paid"
