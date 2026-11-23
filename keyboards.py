@@ -68,7 +68,25 @@ def admin_orders_kb(orders: list):
     buttons = []
     for o in orders:
         display_id = str(o['_id'])[-6:]
-        status = o.get('status', 'unknown').replace('_', ' ').title()
+        
+        # FIX: Clean status display for the Admin
+        status = o.get('status', 'unknown')
+        method = o.get('payment_method', '')
+        
+        if status == 'pending_payment' or status == 'paid':
+            if method in ['telebirr', 'cbe']:
+                status = "Paid"
+        elif status == 'cod_pending':
+            status = "Cash (COD)"
+        elif status == 'delivered':
+            status = "Delivered"
+        elif status == 'cancelled':
+            status = "Cancelled"
+        elif status == 'rejected':
+            status = "Rejected"
+        else:
+            status = status.replace('_', ' ').title()
+
         buttons.append([InlineKeyboardButton(
             text=f"#{display_id} - {status}", 
             callback_data=f"admin_view_order_{o['_id']}"
@@ -80,14 +98,12 @@ def admin_back_orders_kb():
         [InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")]
     ])
 
-# UPDATED: Size selection keyboard
 def size_selection_kb(sizes: list, product_id: str, lang: str):
     t = TEXTS[lang]
     buttons = []
-    # Use enumerate to get the index (0, 1, 2...)
     for idx, size in enumerate(sizes):
-        # Pass the index instead of the size text to avoid 64-byte limit
-        buttons.append([InlineKeyboardButton(text=size, callback_data=f"selectsize_{idx}_{product_id}")])
+        button_text = size.split("|")[0].strip() if "|" in size else size
+        buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"selectsize_{idx}_{product_id}")])
     
     buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
