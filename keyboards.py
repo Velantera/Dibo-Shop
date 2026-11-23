@@ -69,7 +69,6 @@ def admin_orders_kb(orders: list):
     for o in orders:
         display_id = str(o['_id'])[-6:]
         
-        # FIX: Clean status display for the Admin
         status = o.get('status', 'unknown')
         method = o.get('payment_method', '')
         
@@ -93,9 +92,39 @@ def admin_orders_kb(orders: list):
         )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def admin_back_orders_kb():
+def admin_back_orders_kb(order_id: str = None):
+    # Added order_id parameter so we can build the action buttons
+    buttons = []
+    if order_id:
+        buttons.append([InlineKeyboardButton(text="✅ Mark as Complete", callback_data=f"admin_complete_{order_id}")])
+        buttons.append([InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_reject_{order_id}")])
+    
+    buttons.append([InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+# --- CONFIRMATION KEYBOARDS ---
+def confirm_approve_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")]
+        [
+            InlineKeyboardButton(text="✅ YES, Approve", callback_data=f"confirm_approve_{order_id}"),
+            InlineKeyboardButton(text="❌ No, Go Back", callback_data="admin_all_orders")
+        ]
+    ])
+
+def confirm_reject_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="❌ YES, Reject", callback_data=f"confirm_reject_{order_id}"),
+            InlineKeyboardButton(text="✅ No, Go Back", callback_data="admin_all_orders")
+        ]
+    ])
+
+def confirm_complete_kb(order_id: str):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ YES, Complete", callback_data=f"confirm_complete_{order_id}"),
+            InlineKeyboardButton(text="❌ No, Go Back", callback_data="admin_all_orders")
+        ]
     ])
 
 def size_selection_kb(sizes: list, product_id: str, lang: str):
