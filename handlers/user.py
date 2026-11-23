@@ -707,12 +707,14 @@ async def my_orders(callback: CallbackQuery, state: FSMContext):
         
         # FIX: Clean status display for User
         display_status = o['status']
-        if o.get('payment_method') == 'pending_payment':
+        if o.get('payment_method') in ['telebirr', 'cbe'] and o['status'] in ['pending_payment', 'paid']:
             display_status = "Paid"
-        elif o.get('payment_method') == 'cod_pending':
+        elif o['status'] == 'cod_pending':
             display_status = "Cash"
+        else:
+            display_status = display_status.replace('_', ' ').title()
         
-        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{display_status.replace('_', ' ').title()}**\n"
+        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{display_status}**\n"
         
     try:
         await callback.message.edit_text(text, reply_markup=user_orders_kb(orders, lang), parse_mode="Markdown")
@@ -1225,6 +1227,15 @@ async def admin_view_order(callback: CallbackQuery, state: FSMContext):
         
     item = order['items'][0]
     
+    # FIX: Clean status display
+    display_status = order.get('status', 'Unknown')
+    if order.get('payment_method') in ['telebirr', 'cbe'] and display_status in ['pending_payment', 'paid']:
+        display_status = "Paid"
+    elif display_status == 'cod_pending':
+        display_status = "Cash on Delivery"
+    else:
+        display_status = display_status.replace('_', ' ').title()
+
     text = (
         f"📦 **Order Details**\n\n"
         f"🆔 Order: `{order_id}`\n"
@@ -1233,8 +1244,8 @@ async def admin_view_order(callback: CallbackQuery, state: FSMContext):
         f"📍 Address: {order.get('address')}\n\n"
         f"👗 Item: {item['name']} (Size: {item.get('size', 'N/A')})\n"
         f"💰 Total: {order['total']} ETB\n"
-        f"💳 Payment: {order.get('payment_method', 'Unknown')}\n"
-        f"📊 Status: {order.get('status', 'Unknown').replace('_', ' ').title()}"
+        f"💳 Payment: {order.get('payment_method', 'Unknown').title()}\n"
+        f"📊 Status: {display_status}"
     )
     
     try:
