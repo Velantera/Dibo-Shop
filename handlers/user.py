@@ -53,6 +53,31 @@ async def get_lang(state: FSMContext) -> str:
     return data.get("lang", "en")
 
 
+def owner_main_menu_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🏠 Main Menu", callback_data="admin_main_menu")
+    ]])
+
+
+def with_owner_main_menu(keyboard=None):
+    """Append an owner dashboard button without removing existing actions."""
+    rows = [list(row) for row in keyboard.inline_keyboard] if keyboard else []
+    if not any(button.callback_data == "admin_main_menu" for row in rows for button in row):
+        rows.append([InlineKeyboardButton(text="🏠 Main Menu", callback_data="admin_main_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def owner_dashboard_kb():
+    return with_owner_main_menu(InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
+        [
+            InlineKeyboardButton(text="➕ Add New Product", callback_data="admin_add_product"),
+            InlineKeyboardButton(text="📝 Edit Products", callback_data="admin_edit_products")
+        ],
+        [InlineKeyboardButton(text="📢 Broadcast Message (Coming Soon)", callback_data="admin_broadcast")]
+    ]))
+
+
 DELIVERY_FEE_PAID_STATUSES = {"delivery_fee_paid", "pending_payment", "paid", "cod_pending", "delivered", "payment_rejected", "cancelled_after_fee"}
 TERMINAL_ORDER_STATUSES = {"delivered", "cancelled", "rejected", "payment_rejected", "cancelled_after_fee"}
 
@@ -66,7 +91,8 @@ def order_payment_summary(order: dict) -> tuple[float, float, bool]:
 
 
 async def edit_admin_message(message: Message, text: str, reply_markup=None):
-    """Edit either a photo caption or a normal text message."""
+    """Edit an owner message and always retain a route back to the dashboard."""
+    reply_markup = with_owner_main_menu(reply_markup)
     try:
         if message.caption is not None:
             await message.edit_caption(caption=text, reply_markup=reply_markup, parse_mode="Markdown")
@@ -110,14 +136,7 @@ async def cmd_start(message: Message, state: FSMContext):
     await save_user(user.id, user.first_name, username)
 
     if is_admin(user.id):
-        admin_kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
-            [
-                InlineKeyboardButton(text="➕ Add New Product", callback_data="admin_add_product"),
-                InlineKeyboardButton(text="📝 Edit Products", callback_data="admin_edit_products")
-            ],
-            [InlineKeyboardButton(text="📢 Broadcast Message (Coming Soon)", callback_data="admin_broadcast")]
-        ])
+        admin_kb = owner_dashboard_kb()
         await message.answer(
             "👑 **Owner Dashboard**\n\nManage your shop below:",
             reply_markup=admin_kb,
@@ -133,10 +152,10 @@ async def cmd_start(message: Message, state: FSMContext):
         f"🆔 *ID:* `{user.id}`"
     )
     
-    owner_kb = InlineKeyboardMarkup(inline_keyboard=[
+    owner_kb = with_owner_main_menu(InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
         [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
-    ])
+    ]))
     
     for admin_id in OWNER_IDS:
         try:
@@ -502,7 +521,7 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
                     username=username
                 ),
                 parse_mode="Markdown",
-                reply_markup=verify_delivery_fee_kb(order_id)
+                reply_markup=with_owner_main_menu(verify_delivery_fee_kb(order_id))
             )
         except Exception as e:
             print(f"Failed to send delivery-fee proof to admin {admin_id}: {e}")
@@ -560,7 +579,7 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
                 await callback.bot.send_message(
                     chat_id=admin_id,
                     text=owner_msg,
-                    reply_markup=delivery_time_kb(order_id),
+                    reply_markup=with_owner_main_menu(delivery_time_kb(order_id)),
                     parse_mode="Markdown"
                 )
             except Exception as e:
@@ -689,7 +708,7 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
                 photo=message.photo[-1].file_id,
                 caption=owner_msg,
                 parse_mode="Markdown",
-                reply_markup=admin_verify_kb(order_id)
+                reply_markup=with_owner_main_menu(admin_verify_kb(order_id))
             )
         except Exception as e:
             print(f"Failed to send final payment proof to admin {admin_id}: {e}")
@@ -1049,7 +1068,7 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
 async def cb_addproduct(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id):
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
-    await callback.message.answer("📸 Send me a **photo** of the dress.")
+    await callback.message.answer("📸 Send me a **photo** of the dress.", reply_markup=owner_main_menu_kb())
     await state.set_state(AddProductState.waiting_photo)
     await callback.answer()
 
@@ -1058,21 +1077,21 @@ async def cmd_addproduct(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return await message.answer("⛔ You are not authorized to use this command.")
         
-    await message.answer("📸 Send me a **photo** of the dress.")
+    await message.answer("📸 Send me a **photo** of the dress.", reply_markup=owner_main_menu_kb())
     await state.set_state(AddProductState.waiting_photo)
 
 @router.message(AddProductState.waiting_photo, F.photo)
 async def add_photo(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id): return
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("✅ Photo saved. Now send me the **Name** of the dress.")
+    await message.answer("✅ Photo saved. Now send me the **Name** of the dress.", reply_markup=owner_main_menu_kb())
     await state.set_state(AddProductState.waiting_name)
 
 @router.message(AddProductState.waiting_name)
 async def add_name(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id): return
     await state.update_data(name=message.text)
-    await message.answer("✅ Name saved. Now send the **Price** (numbers only).")
+    await message.answer("✅ Name saved. Now send the **Price** (numbers only).", reply_markup=owner_main_menu_kb())
     await state.set_state(AddProductState.waiting_price)
 
 @router.message(AddProductState.waiting_price)
@@ -1080,16 +1099,16 @@ async def add_price(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id): return
     try:
         await state.update_data(price=float(message.text))
-        await message.answer("✅ Price saved. Now send a short **Description**.")
+        await message.answer("✅ Price saved. Now send a short **Description**.", reply_markup=owner_main_menu_kb())
         await state.set_state(AddProductState.waiting_desc)
     except:
-        await message.answer("❌ Invalid number. Send the price again.")
+        await message.answer("❌ Invalid number. Send the price again.", reply_markup=owner_main_menu_kb())
 
 @router.message(AddProductState.waiting_desc)
 async def add_desc(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id): return
     await state.update_data(desc=message.text)
-    await message.answer("✅ Description saved. How many items are **In Stock**?")
+    await message.answer("✅ Description saved. How many items are **In Stock**?", reply_markup=owner_main_menu_kb())
     await state.set_state(AddProductState.waiting_stock)
 
 @router.message(AddProductState.waiting_stock)
@@ -1101,10 +1120,10 @@ async def add_stock(message: Message, state: FSMContext):
         
         lang = await get_lang(state)
         t = TEXTS[lang]
-        await message.answer(t["enter_sizes"])
+        await message.answer(t["enter_sizes"], reply_markup=owner_main_menu_kb())
         await state.set_state(AddProductState.waiting_sizes)
     except:
-        await message.answer("❌ Invalid number. Send the stock quantity again.")
+        await message.answer("❌ Invalid number. Send the stock quantity again.", reply_markup=owner_main_menu_kb())
 
 @router.message(AddProductState.waiting_sizes)
 async def add_sizes(message: Message, state: FSMContext):
@@ -1121,7 +1140,7 @@ async def add_sizes(message: Message, state: FSMContext):
     
     sizes_text = sizes_list[0]
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📢 Yes, Post to Channel", callback_data="post_channel")], [InlineKeyboardButton(text="❌ No, Just Save", callback_data="post_cancel")]])
-    await message.answer(f"🎉 Product saved! (Size: {sizes_text})\n\nDo you want to post this to your Channel now?", reply_markup=kb)
+    await message.answer(f"🎉 Product saved! (Size: {sizes_text})\n\nDo you want to post this to your Channel now?", reply_markup=with_owner_main_menu(kb))
     await state.set_state(AddProductState.confirm_post)
 
 @router.callback_query(F.data == "post_channel", AddProductState.confirm_post)
@@ -1144,17 +1163,17 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
         if CHANNEL_ID != 0:
             msg = await callback.bot.send_photo(chat_id=CHANNEL_ID, photo=data['photo'], caption=caption, reply_markup=channel_kb, parse_mode="Markdown")
             await update_product(data['product_id'], {"channel_message_id": msg.message_id})
-            await callback.message.edit_text("✅ Product posted to the Channel!")
+            await edit_admin_message(callback.message, "✅ Product posted to the Channel!")
         else:
-            await callback.message.edit_text("⚠️ CHANNEL_ID is not set.")
+            await edit_admin_message(callback.message, "⚠️ CHANNEL_ID is not set.")
     except Exception as e:
-        await callback.message.edit_text(f"❌ Failed to post: {e}")
+        await edit_admin_message(callback.message, f"❌ Failed to post: {e}")
     await state.clear()
 
 @router.callback_query(F.data == "post_cancel", AddProductState.confirm_post)
 async def cancel_post(callback: CallbackQuery, state: FSMContext):
     if not is_admin(callback.from_user.id): return
-    await callback.message.edit_text("✅ Product saved (not posted).")
+    await edit_admin_message(callback.message, "✅ Product saved (not posted).")
     await state.clear()
 
 # ==========================================
@@ -1167,13 +1186,13 @@ async def cb_editproduct(callback: CallbackQuery, state: FSMContext):
         
     products = await get_all_products()
     if not products:
-        return await callback.message.answer("No products found in DB.")
+        return await callback.message.answer("No products found in DB.", reply_markup=owner_main_menu_kb())
     
     text = "Send the **Product ID** you want to edit/delete:\n\n"
     for p in products:
         text += f"`{p['_id']}` — {p['name']} (Stock: {p['stock']}, Price: {p['price']})\n"
     
-    await callback.message.answer(text, parse_mode="Markdown")
+    await callback.message.answer(text, reply_markup=owner_main_menu_kb(), parse_mode="Markdown")
     await state.set_state(EditProductState.waiting_id)
     await callback.answer()
 
@@ -1184,13 +1203,13 @@ async def cmd_editproduct(message: Message, state: FSMContext):
         
     products = await get_all_products()
     if not products:
-        return await message.answer("No products found in DB.")
+        return await message.answer("No products found in DB.", reply_markup=owner_main_menu_kb())
     
     text = "Send the **Product ID** you want to edit/delete:\n\n"
     for p in products:
         text += f"`{p['_id']}` — {p['name']} (Stock: {p['stock']}, Price: {p['price']})\n"
     
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, reply_markup=owner_main_menu_kb(), parse_mode="Markdown")
     await state.set_state(EditProductState.waiting_id)
 
 @router.message(EditProductState.waiting_id)
@@ -1198,7 +1217,7 @@ async def edit_id(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id): return
     product = await get_product(message.text.strip())
     if not product:
-        return await message.answer("❌ Invalid ID. Try again.")
+        return await message.answer("❌ Invalid ID. Try again.", reply_markup=owner_main_menu_kb())
     
     await state.update_data(edit_id=message.text.strip(), product_name=product['name'])
     
@@ -1211,7 +1230,7 @@ async def edit_id(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="📦 Update Stock", callback_data="edit_stock")],
         [InlineKeyboardButton(text="🗑 DELETE PRODUCT", callback_data="edit_delete")]
     ])
-    await message.answer(f"Editing **{product['name']}**.\nWhat do you want to change?", reply_markup=kb, parse_mode="Markdown")
+    await message.answer(f"Editing **{product['name']}**.\nWhat do you want to change?", reply_markup=with_owner_main_menu(kb), parse_mode="Markdown")
     await state.set_state(EditProductState.waiting_action)
 
 @router.callback_query(F.data == "edit_delete", EditProductState.waiting_action)
@@ -1222,7 +1241,7 @@ async def confirm_delete(callback: CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="✅ YES, Delete Forever", callback_data="confirm_delete_yes")],
         [InlineKeyboardButton(text="❌ Cancel", callback_data="menu_main")]
     ])
-    await callback.message.edit_text(f"⚠️ Are you sure you want to delete **{data['product_name']}**? This cannot be undone.", reply_markup=kb, parse_mode="Markdown")
+    await callback.message.edit_text(f"⚠️ Are you sure you want to delete **{data['product_name']}**? This cannot be undone.", reply_markup=with_owner_main_menu(kb), parse_mode="Markdown")
     await state.set_state(EditProductState.confirm_delete)
     await callback.answer()
 
@@ -1240,7 +1259,7 @@ async def execute_delete(callback: CallbackQuery, state: FSMContext):
             print(f"Could not delete channel message: {e}")
 
     await delete_product(product_id)
-    await callback.message.edit_text("🗑 **Product Deleted Successfully.** (Removed from Bot and Channel).")
+    await edit_admin_message(callback.message, "🗑 **Product Deleted Successfully.** (Removed from Bot and Channel).")
     await state.clear()
     await callback.answer()
 
@@ -1251,11 +1270,11 @@ async def edit_field(callback: CallbackQuery, state: FSMContext):
     await state.update_data(edit_field=field)
     
     if field == "photo":
-        await callback.message.edit_text("📸 Send the **new Photo** for this product:")
+        await edit_admin_message(callback.message, "📸 Send the **new Photo** for this product:")
     elif field == "sizes":
-        await callback.message.edit_text("Send the **new Sizes** (separated by commas, e.g., `S, M, L`):")
+        await edit_admin_message(callback.message, "Send the **new Sizes** (separated by commas, e.g., `S, M, L`):")
     else:
-        await callback.message.edit_text(f"Send the **new {field.title()}** value:")
+        await edit_admin_message(callback.message, f"Send the **new {field.title()}** value:")
         
     await state.set_state(EditProductState.waiting_value)
     await callback.answer()
@@ -1291,10 +1310,10 @@ async def edit_photo_value(message: Message, state: FSMContext):
             except Exception as e:
                 print(f"Failed to update channel photo: {e}")
 
-        await message.answer("✅ Product photo updated successfully! (Channel updated too)")
+        await message.answer("✅ Product photo updated successfully! (Channel updated too)", reply_markup=owner_main_menu_kb())
         await state.clear()
     else:
-        await message.answer("❌ Please send text, not a photo.")
+        await message.answer("❌ Please send text, not a photo.", reply_markup=owner_main_menu_kb())
 
 @router.message(EditProductState.waiting_value)
 async def edit_text_value(message: Message, state: FSMContext):
@@ -1304,7 +1323,7 @@ async def edit_text_value(message: Message, state: FSMContext):
     product_id = data['edit_id']
     
     if field == "photo":
-        return await message.answer("❌ Please send a photo, not text.")
+        return await message.answer("❌ Please send a photo, not text.", reply_markup=owner_main_menu_kb())
         
     val = message.text.strip()
     
@@ -1339,11 +1358,23 @@ async def edit_text_value(message: Message, state: FSMContext):
             except Exception as e:
                 print(f"Failed to edit channel post: {e} (Message might be identical)")
 
-        await message.answer(f"✅ Product updated! **{field.title()}** is now: `{val}` (Channel updated)", parse_mode="Markdown")
+        await message.answer(f"✅ Product updated! **{field.title()}** is now: `{val}` (Channel updated)", reply_markup=owner_main_menu_kb(), parse_mode="Markdown")
     except Exception as e:
-        await message.answer(f"❌ Invalid format or error: {e}. Please try again.")
+        await message.answer(f"❌ Invalid format or error: {e}. Please try again.", reply_markup=owner_main_menu_kb())
         
     await state.clear()
+
+@router.callback_query(F.data == "admin_main_menu")
+async def admin_main_menu(callback: CallbackQuery, state: FSMContext):
+    if not is_admin(callback.from_user.id):
+        return await callback.answer("⛔ Unauthorized.", show_alert=True)
+    await state.clear()
+    await edit_admin_message(
+        callback.message,
+        "👑 **Owner Dashboard**\n\nManage your shop below:",
+        owner_dashboard_kb()
+    )
+    await callback.answer()
 
 # ==========================================
 # 8. ADMIN: ALL ORDERS HANDLER
@@ -1357,13 +1388,13 @@ async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
     
     if not orders:
         try:
-            await callback.message.edit_text("📭 No orders found.", reply_markup=main_menu_kb("en"))
+            await callback.message.edit_text("📭 No orders found.", reply_markup=owner_dashboard_kb())
         except Exception:
             pass
         return await callback.answer()
         
     text = "📋 **All Orders:**\n\nEach order button shows its current amount due. Select an order to view full details."
-    kb = admin_orders_kb(orders)
+    kb = with_owner_main_menu(admin_orders_kb(orders))
     
     try:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="Markdown")
