@@ -109,7 +109,7 @@ async def cmd_start(message: Message, state: FSMContext):
     username = user.username if user.username else ""
     await save_user(user.id, user.first_name, username)
 
-    if user.id == OWNER_ID:
+    if user.id == OWNER_IDa:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
             [
@@ -894,11 +894,20 @@ async def process_confirmed_admin_action(callback: CallbackQuery):
     if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ You are not the owner.", show_alert=True)
 
-    # Callback values are confirm_<action>_<order_id>; Mongo IDs contain no underscores.
-    parts = callback.data.split("_", 2)
-    if len(parts) != 3:
-        return await callback.answer()
-    action, order_id = parts[1], parts[2]
+    # Some actions contain underscores (verify_fee, reject_fee).
+    # Match the complete action prefix before extracting the order ID.
+    payload = callback.data.removeprefix("confirm_")
+    action = None
+    order_id = None
+    for candidate in ("verify_fee", "reject_fee", "approve", "reject", "complete", "cancel"):
+        prefix = candidate + "_"
+        if payload.startswith(prefix):
+            action = candidate
+            order_id = payload[len(prefix):]
+            break
+
+    if not action or not order_id:
+        return await callback.answer("Invalid confirmation callback.", show_alert=True)
     order = await get_order(order_id)
     if not order:
         return await callback.answer("Order not found.", show_alert=True)
