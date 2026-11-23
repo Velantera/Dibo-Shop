@@ -58,12 +58,9 @@ async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     user = message.from_user
     
-    # --- SAVE USER TO DATABASE FOR BROADCASTS ---
     username = user.username if user.username else ""
     await save_user(user.id, user.first_name, username)
-    # --------------------------------------------
 
-    # --- UPDATED OWNER DASHBOARD ---
     if user.id in OWNER_IDS:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
@@ -79,7 +76,6 @@ async def cmd_start(message: Message, state: FSMContext):
             parse_mode="Markdown"
         )
         return
-    # --------------------------------
 
     display_name = f"@{user.username}" if user.username else f"[{user.id}](tg://user?id={user.id})"
     notify_text = (
@@ -94,7 +90,6 @@ async def cmd_start(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
     ])
     
-    # Send to all owners
     for owner_id in OWNER_IDS:
         try:
             await message.bot.send_message(chat_id=owner_id, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
@@ -138,15 +133,11 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
         )
     await callback.answer()
 
-# --- ADDED BROADCAST HANDLER HERE ---
 @router.callback_query(F.data == "admin_broadcast")
 async def cb_broadcast(callback: CallbackQuery):
     if callback.from_user.id not in OWNER_IDS:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
-    
-    # Show a pop-up alert to the owner
     await callback.answer("🚧 Broadcast feature is coming soon! You will be able to send messages to all users here.", show_alert=True)
-# ------------------------------------
 
 @router.callback_query(F.data.startswith("reminder_"))
 async def send_reminder(callback: CallbackQuery, state: FSMContext):
@@ -713,7 +704,15 @@ async def my_orders(callback: CallbackQuery, state: FSMContext):
         status_emoji = "⏳" if "pending" in o['status'] else ("✅" if o['status'] == "paid" else ("🚚" if o['status'] == "delivered" else "❌"))
         item = o['items'][0] if o.get('items') else {}
         size_text = f" (Size: {item.get('size')})" if item.get('size') else ""
-        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{o['status'].replace('_', ' ').title()}**\n"
+        
+        # FIX: Clean status display for User
+        display_status = o['status']
+        if o.get('payment_method') == 'pending_payment':
+            display_status = "Paid"
+        elif o.get('payment_method') == 'cod_pending':
+            display_status = "Cash"
+        
+        text += f"{status_emoji} `{str(o['_id'])[-6:]}` — {item.get('name', 'Item')}{size_text} — **{display_status.replace('_', ' ').title()}**\n"
         
     try:
         await callback.message.edit_text(text, reply_markup=user_orders_kb(orders, lang), parse_mode="Markdown")
