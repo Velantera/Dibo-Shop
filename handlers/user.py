@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import PAYMENT_ACCOUNTS, OWNER_IDS, CHANNEL_ID
+from config import PAYMENT_ACCOUNTS, OWNER_ID, CHANNEL_ID
 from database import (
     get_products, get_all_products, get_product, create_order,
     update_order_status, get_user_orders, add_product, update_product, delete_product,
@@ -61,7 +61,7 @@ async def cmd_start(message: Message, state: FSMContext):
     username = user.username if user.username else ""
     await save_user(user.id, user.first_name, username)
 
-    if user.id in OWNER_IDS:
+    if user.id == OWNER_ID:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
             [
@@ -90,11 +90,11 @@ async def cmd_start(message: Message, state: FSMContext):
         [InlineKeyboardButton(text="🔔 Send Reminder", callback_data=f"reminder_{user.id}")]
     ])
     
-    for owner_id in OWNER_IDS:
-        try:
-            await message.bot.send_message(chat_id=owner_id, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
-        except Exception as e:
-            print(f"Failed to notify owner {owner_id}: {e}")
+    # Send to primary owner
+    try:
+        await message.bot.send_message(chat_id=OWNER_ID, text=notify_text, reply_markup=owner_kb, parse_mode="Markdown")
+    except Exception as e:
+        print(f"Failed to notify owner: {e}")
 
     args = message.text.split()
     if len(args) > 1 and args[1].startswith("buy_"):
@@ -135,13 +135,13 @@ async def set_language(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin_broadcast")
 async def cb_broadcast(callback: CallbackQuery):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
     await callback.answer("🚧 Broadcast feature is coming soon! You will be able to send messages to all users here.", show_alert=True)
 
 @router.callback_query(F.data.startswith("reminder_"))
 async def send_reminder(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     target_user_id = int(callback.data.split("_")[1])
@@ -442,22 +442,22 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
     
     order = await get_order(order_id)
     
-    for owner_id in OWNER_IDS:
-        try:
-            await message.bot.send_photo(
-                chat_id=owner_id, 
-                photo=message.photo[-1].file_id,
-                caption=t["owner_delivery_proof"].format(
-                    order_id=order_id,
-                    name=order.get('customer_name'),
-                    phone=order.get('phone_number'),
-                    username=username
-                ),
-                parse_mode="Markdown",
-                reply_markup=verify_delivery_fee_kb(order_id)
-            )
-        except Exception as e:
-            print(f"Failed to send proof to owner {owner_id}: {e}")
+    # Send to Primary Owner
+    try:
+        await message.bot.send_photo(
+            chat_id=OWNER_ID, 
+            photo=message.photo[-1].file_id,
+            caption=t["owner_delivery_proof"].format(
+                order_id=order_id,
+                name=order.get('customer_name'),
+                phone=order.get('phone_number'),
+                username=username
+            ),
+            parse_mode="Markdown",
+            reply_markup=verify_delivery_fee_kb(order_id)
+        )
+    except Exception as e:
+        print(f"Failed to send proof to owner: {e}")
     
     await message.answer(t["delivery_fee_proof_sent"], reply_markup=main_menu_kb(lang))
     await state.clear()
@@ -465,11 +465,16 @@ async def receive_delivery_fee_screenshot(message: Message, state: FSMContext):
 # --- OWNER VERIFIES DELIVERY FEE ---
 @router.callback_query(F.data.startswith("verify_fee_"))
 async def verify_delivery_fee(callback: CallbackQuery):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     order_id = callback.data.split("_")[2]
     order = await get_order(order_id)
+
+    # Safety check
+    if order.get('status') != 'pending_delivery_fee':
+        return await callback.answer("This fee is already verified or processed.", show_alert=True)
+
     user_id = order['user_id']
     lang = order.get('language', 'en')
     t = TEXTS[lang]
@@ -488,17 +493,22 @@ async def verify_delivery_fee(callback: CallbackQuery):
     if callback.message.caption:
         await callback.message.edit_caption(
             caption=callback.message.caption + "\n\n✅ **DELIVERY FEE VERIFIED**",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=None
         )
     await callback.answer("Delivery fee verified.")
 
 @router.callback_query(F.data.startswith("reject_fee_"))
 async def reject_delivery_fee(callback: CallbackQuery):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     order_id = callback.data.split("_")[2]
     order = await get_order(order_id)
+
+    if order.get('status') != 'pending_delivery_fee':
+        return await callback.answer("This order is already processed.", show_alert=True)
+
     user_id = order['user_id']
     lang = order.get('language', 'en')
     t = TEXTS[lang]
@@ -514,7 +524,8 @@ async def reject_delivery_fee(callback: CallbackQuery):
     if callback.message.caption:
         await callback.message.edit_caption(
             caption=callback.message.caption + "\n\n❌ **REJECTED**",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=None
         )
     await callback.answer("Order rejected.")
 
@@ -544,16 +555,16 @@ async def checkout_cod(callback: CallbackQuery, state: FSMContext):
             payment="Cash on Delivery"
         )
         
-        for owner_id in OWNER_IDS:
-            try:
-                await callback.bot.send_message(
-                    chat_id=owner_id,
-                    text=owner_msg,
-                    reply_markup=delivery_time_kb(order_id), 
-                    parse_mode="Markdown"
-                )
-            except Exception as e:
-                print(f"Failed to notify owner {owner_id}: {e}")
+        # Send to Primary Owner
+        try:
+            await callback.bot.send_message(
+                chat_id=OWNER_ID,
+                text=owner_msg,
+                reply_markup=delivery_time_kb(order_id), 
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to notify owner: {e}")
         
         user_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=t["btn_main_menu"], callback_data="menu_main")]
@@ -668,17 +679,17 @@ async def receive_final_screenshot(message: Message, state: FSMContext):
         payment="Pay Now (Item Verified)"
     )
 
-    for owner_id in OWNER_IDS:
-        try:
-            await message.bot.send_photo(
-                chat_id=owner_id, 
-                photo=message.photo[-1].file_id,
-                caption=owner_msg,
-                parse_mode="Markdown", 
-                reply_markup=pay_now_verify_kb(order_id)
-            )
-        except Exception as e:
-            print(f"Failed to send final proof to owner {owner_id}: {e}")
+    # Send to Primary Owner
+    try:
+        await message.bot.send_photo(
+            chat_id=OWNER_ID, 
+            photo=message.photo[-1].file_id,
+            caption=owner_msg,
+            parse_mode="Markdown", 
+            reply_markup=pay_now_verify_kb(order_id)
+        )
+    except Exception as e:
+        print(f"Failed to send final proof to owner: {e}")
 
     await message.answer(t["screenshot_received"], reply_markup=main_menu_kb(lang))
     await state.clear()
@@ -705,7 +716,7 @@ async def my_orders(callback: CallbackQuery, state: FSMContext):
         item = o['items'][0] if o.get('items') else {}
         size_text = f" (Size: {item.get('size')})" if item.get('size') else ""
         
-        # FIX: Clean status display for User
+        # Clean status display for User
         display_status = o['status']
         if o.get('payment_method') in ['telebirr', 'cbe'] and o['status'] in ['pending_payment', 'paid']:
             display_status = "Paid"
@@ -759,15 +770,15 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
         item=item_name
     )
     
-    for owner_id in OWNER_IDS:
-        try:
-            await callback.bot.send_message(
-                chat_id=owner_id,
-                text=cancel_msg,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            print(f"Failed to send cancel notice to {owner_id}: {e}")
+    # Send to Primary Owner
+    try:
+        await callback.bot.send_message(
+            chat_id=OWNER_ID,
+            text=cancel_msg,
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        print(f"Failed to send cancel notice to owner: {e}")
         
     await callback.message.edit_text(t["order_cancelled"], reply_markup=main_menu_kb(lang))
     await callback.answer()
@@ -777,7 +788,7 @@ async def cancel_order(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 @router.callback_query(F.data.startswith("deliver_"))
 async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     parts = callback.data.split("_")
@@ -839,7 +850,7 @@ async def set_delivery_time(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("admin_complete_"))
 async def complete_order(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     order_id = callback.data.split("_")[2]
@@ -875,12 +886,14 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
     if callback.message.caption:
         await callback.message.edit_caption(
             caption=callback.message.caption + "\n\n✅ **COMPLETED**",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=None
         )
     else:
         await callback.message.edit_text(
             text=callback.message.text + "\n\n✅ **COMPLETED**",
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            reply_markup=None
         )
         
     await callback.answer("Order marked as completed!")
@@ -890,7 +903,7 @@ async def complete_order(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 @router.callback_query(F.data == "admin_add_product")
 async def cb_addproduct(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
     await callback.message.answer("📸 Send me a **photo** of the dress.")
     await state.set_state(AddProductState.waiting_photo)
@@ -898,7 +911,7 @@ async def cb_addproduct(callback: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == "/addproduct")
 async def cmd_addproduct(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS:
+    if message.from_user.id != OWNER_ID:
         return await message.answer("⛔ You are not authorized to use this command.")
         
     await message.answer("📸 Send me a **photo** of the dress.")
@@ -906,21 +919,21 @@ async def cmd_addproduct(message: Message, state: FSMContext):
 
 @router.message(AddProductState.waiting_photo, F.photo)
 async def add_photo(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     await state.update_data(photo=message.photo[-1].file_id)
     await message.answer("✅ Photo saved. Now send me the **Name** of the dress.")
     await state.set_state(AddProductState.waiting_name)
 
 @router.message(AddProductState.waiting_name)
 async def add_name(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     await state.update_data(name=message.text)
     await message.answer("✅ Name saved. Now send the **Price** (numbers only).")
     await state.set_state(AddProductState.waiting_price)
 
 @router.message(AddProductState.waiting_price)
 async def add_price(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     try:
         await state.update_data(price=float(message.text))
         await message.answer("✅ Price saved. Now send a short **Description**.")
@@ -930,14 +943,14 @@ async def add_price(message: Message, state: FSMContext):
 
 @router.message(AddProductState.waiting_desc)
 async def add_desc(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     await state.update_data(desc=message.text)
     await message.answer("✅ Description saved. How many items are **In Stock**?")
     await state.set_state(AddProductState.waiting_stock)
 
 @router.message(AddProductState.waiting_stock)
 async def add_stock(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     try:
         stock = int(message.text)
         await state.update_data(stock=stock)
@@ -951,7 +964,7 @@ async def add_stock(message: Message, state: FSMContext):
 
 @router.message(AddProductState.waiting_sizes)
 async def add_sizes(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     
     sizes_list = [message.text.strip()]
     
@@ -969,7 +982,7 @@ async def add_sizes(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "post_channel", AddProductState.confirm_post)
 async def post_to_channel(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS: return
+    if callback.from_user.id != OWNER_ID: return
     data = await state.get_data()
     
     bot_info = await callback.bot.get_me()
@@ -996,7 +1009,7 @@ async def post_to_channel(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "post_cancel", AddProductState.confirm_post)
 async def cancel_post(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS: return
+    if callback.from_user.id != OWNER_ID: return
     await callback.message.edit_text("✅ Product saved (not posted).")
     await state.clear()
 
@@ -1005,7 +1018,7 @@ async def cancel_post(callback: CallbackQuery, state: FSMContext):
 # ==========================================
 @router.callback_query(F.data == "admin_edit_products")
 async def cb_editproduct(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     products = await get_all_products()
@@ -1022,7 +1035,7 @@ async def cb_editproduct(callback: CallbackQuery, state: FSMContext):
 
 @router.message(F.text == "/editproduct")
 async def cmd_editproduct(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS:
+    if message.from_user.id != OWNER_ID:
         return await message.answer("⛔ Unauthorized.")
         
     products = await get_all_products()
@@ -1038,7 +1051,7 @@ async def cmd_editproduct(message: Message, state: FSMContext):
 
 @router.message(EditProductState.waiting_id)
 async def edit_id(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     product = await get_product(message.text.strip())
     if not product:
         return await message.answer("❌ Invalid ID. Try again.")
@@ -1059,7 +1072,7 @@ async def edit_id(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "edit_delete", EditProductState.waiting_action)
 async def confirm_delete(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS: return
+    if callback.from_user.id != OWNER_ID: return
     data = await state.get_data()
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ YES, Delete Forever", callback_data="confirm_delete_yes")],
@@ -1071,7 +1084,7 @@ async def confirm_delete(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "confirm_delete_yes", EditProductState.confirm_delete)
 async def execute_delete(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS: return
+    if callback.from_user.id != OWNER_ID: return
     data = await state.get_data()
     product_id = data['edit_id']
     product = await get_product(product_id)
@@ -1089,7 +1102,7 @@ async def execute_delete(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("edit_"), EditProductState.waiting_action)
 async def edit_field(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS: return
+    if callback.from_user.id != OWNER_ID: return
     field = callback.data.split("_")[1]
     await state.update_data(edit_field=field)
     
@@ -1105,7 +1118,7 @@ async def edit_field(callback: CallbackQuery, state: FSMContext):
 
 @router.message(EditProductState.waiting_value, F.photo)
 async def edit_photo_value(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     data = await state.get_data()
     product_id = data['edit_id']
     product = await get_product(product_id)
@@ -1141,7 +1154,7 @@ async def edit_photo_value(message: Message, state: FSMContext):
 
 @router.message(EditProductState.waiting_value)
 async def edit_text_value(message: Message, state: FSMContext):
-    if message.from_user.id not in OWNER_IDS: return
+    if message.from_user.id != OWNER_ID: return
     data = await state.get_data()
     field = data['edit_field']
     product_id = data['edit_id']
@@ -1193,7 +1206,7 @@ async def edit_text_value(message: Message, state: FSMContext):
 # ==========================================
 @router.callback_query(F.data == "admin_all_orders")
 async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     orders = await get_all_orders()
@@ -1216,7 +1229,7 @@ async def admin_all_orders(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("admin_view_order_"))
 async def admin_view_order(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in OWNER_IDS:
+    if callback.from_user.id != OWNER_ID:
         return await callback.answer("⛔ Unauthorized.", show_alert=True)
         
     order_id = callback.data.split("_")[3]
@@ -1227,7 +1240,7 @@ async def admin_view_order(callback: CallbackQuery, state: FSMContext):
         
     item = order['items'][0]
     
-    # FIX: Clean status display
+    # Clean status display
     display_status = order.get('status', 'Unknown')
     if order.get('payment_method') in ['telebirr', 'cbe'] and display_status in ['pending_payment', 'paid']:
         display_status = "Paid"
