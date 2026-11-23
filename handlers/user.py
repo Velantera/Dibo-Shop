@@ -12,7 +12,7 @@ from database import (
 from keyboards import (
     payment_method_kb, admin_verify_kb, cod_verify_kb, 
     delivery_time_kb, complete_order_kb, verify_delivery_fee_kb, pay_now_verify_kb,
-    admin_orders_kb, admin_back_orders_kb
+    admin_orders_kb, admin_back_orders_kb, confirm_complete_kb
 )
 from locales import TEXTS
 from datetime import datetime, timezone, timedelta
@@ -1244,22 +1244,36 @@ async def admin_view_order(callback: CallbackQuery, state: FSMContext):
     else:
         display_status = display_status.replace('_', ' ').title()
 
+    # Calculate the amount still owed after the delivery fee.
+    total_amount = order.get("total", 0)
+    remaining_amount = max(total_amount - DELIVERY_FEE, 0)
+
     text = (
-        f"📦 **Order Details**\n\n"
-        f"🆔 Order: `{order_id}`\n"
-        f"👤 Name: {order.get('customer_name')}\n"
-        f"📞 Phone: {order.get('phone_number')}\n"
-        f"📍 Address: {order.get('address')}\n\n"
-        f"👗 Item: {item['name']} (Size: {item.get('size', 'N/A')})\n"
-        f"💰 Total: {order['total']} ETB\n"
-        f"💳 Payment: {order.get('payment_method', 'Unknown').title()}\n"
+        f"📦 **Order Details**\\n\\n"
+        f"🆔 Order: `{order_id}`\\n"
+        f"👤 Name: {order.get('customer_name')}\\n"
+        f"📞 Phone: {order.get('phone_number')}\\n"
+        f"📍 Address: {order.get('address')}\\n\\n"
+        f"👗 Item: {item['name']} (Size: {item.get('size', 'N/A')})\\n"
+        f"💰 Total: {total_amount} ETB\\n"
+        f"🚚 Delivery Fee: {DELIVERY_FEE} ETB (Paid)\\n"
+        f"💵 **Remaining to Collect: {remaining_amount} ETB**\\n"
+        f"💳 Payment: {order.get('payment_method', 'Unknown').title()}\\n"
         f"📊 Status: {display_status}"
     )
-    
+
     try:
-        await callback.message.edit_text(text, reply_markup=admin_back_orders_kb(), parse_mode="Markdown")
+        await callback.message.edit_text(
+            text,
+            reply_markup=admin_back_orders_kb(order_id),
+            parse_mode="Markdown"
+        )
     except Exception:
-        await callback.message.answer(text, reply_markup=admin_back_orders_kb(), parse_mode="Markdown")
+        await callback.message.answer(
+            text,
+            reply_markup=admin_back_orders_kb(order_id),
+            parse_mode="Markdown"
+        )
     await callback.answer()
 
 # ==========================================
