@@ -1,18 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from locales import TEXTS
 
-def main_menu_kb(lang: str):
-    t = TEXTS[lang]
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=t["btn_browse"], callback_data="menu_browse"),
-            InlineKeyboardButton(text=t["btn_orders"], callback_data="menu_orders")
-        ],
-        [
-            InlineKeyboardButton(text=t["btn_help"], callback_data="menu_help"),
-            InlineKeyboardButton(text=t["btn_join"], url="https://t.me/Dibo_Demo")
-        ]
-    ])
 
 def payment_method_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -20,119 +7,114 @@ def payment_method_kb(order_id: str):
         [InlineKeyboardButton(text="🏦 CBE", callback_data=f"pay_cbe_{order_id}")],
     ])
 
+
 def admin_verify_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Confirm Payment", callback_data=f"admin_approve_{order_id}"),
-            InlineKeyboardButton(text="❌ Reject", callback_data=f"admin_reject_{order_id}"),
-        ]
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Approve Payment", callback_data=f"admin_approve_{order_id}"),
+        InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}"),
+    ]])
+
 
 def cod_verify_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Mark as Delivered (Collected Cash)", callback_data=f"admin_delivered_{order_id}")],
-        [InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_reject_{order_id}")]
+        [InlineKeyboardButton(text="1 Day", callback_data=f"deliver_1_{order_id}"),
+         InlineKeyboardButton(text="2 Days", callback_data=f"deliver_2_{order_id}"),
+         InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}")],
+        [InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_cancel_{order_id}")],
     ])
 
+
 def delivery_time_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="1 Day", callback_data=f"deliver_1_{order_id}"),
-            InlineKeyboardButton(text="2 Days", callback_data=f"deliver_2_{order_id}"),
-            InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}")
-        ]
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="1 Day", callback_data=f"deliver_1_{order_id}"),
+        InlineKeyboardButton(text="2 Days", callback_data=f"deliver_2_{order_id}"),
+        InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}"),
+    ]])
+
 
 def complete_order_kb(order_id: str):
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Mark as Completed", callback_data=f"admin_complete_{order_id}")]
+        [InlineKeyboardButton(text="✅ Mark as Complete", callback_data=f"admin_complete_{order_id}")],
+        [InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_cancel_{order_id}")],
     ])
+
 
 def verify_delivery_fee_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Verify Delivery Fee", callback_data=f"verify_fee_{order_id}")],
-        [InlineKeyboardButton(text="❌ Reject Order", callback_data=f"reject_fee_{order_id}")]
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Verify Delivery Fee", callback_data=f"verify_fee_{order_id}"),
+        InlineKeyboardButton(text="❌ Reject Fee", callback_data=f"reject_fee_{order_id}"),
+    ]])
+
 
 def pay_now_verify_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="1 Day", callback_data=f"deliver_1_{order_id}"),
-            InlineKeyboardButton(text="2 Days", callback_data=f"deliver_2_{order_id}"),
-            InlineKeyboardButton(text="3 Days", callback_data=f"deliver_3_{order_id}")
-        ],
-        [InlineKeyboardButton(text="❌ Reject Payment", callback_data=f"admin_reject_{order_id}")]
-    ])
+    # The final item-payment screenshot is explicitly approved or rejected by the owner.
+    return admin_verify_kb(order_id)
+
 
 def admin_orders_kb(orders: list):
     buttons = []
-    for o in orders:
-        display_id = str(o['_id'])[-6:]
-        
-        status = o.get('status', 'unknown')
-        method = o.get('payment_method', '')
-        
-        if status == 'pending_payment' or status == 'paid':
-            if method in ['telebirr', 'cbe']:
-                status = "Paid"
-        elif status == 'cod_pending':
-            status = "Cash (COD)"
-        elif status == 'delivered':
-            status = "Delivered"
-        elif status == 'cancelled':
-            status = "Cancelled"
-        elif status == 'rejected':
-            status = "Rejected"
-        else:
-            status = status.replace('_', ' ').title()
-
+    for order in orders:
+        order_id = str(order["_id"])
+        short_id = order_id[-6:]
+        status = order.get("status", "unknown")
+        label_status = {
+            "pending_delivery_fee": "Fee Review",
+            "delivery_fee_paid": "Fee Paid",
+            "pending_payment": "Payment Review",
+            "paid": "Paid",
+            "cod_pending": "COD",
+            "delivered": "Completed",
+            "cancelled": "Cancelled",
+            "rejected": "Rejected",
+            "payment_rejected": "Payment Rejected",
+            "cancelled_after_fee": "Cancelled (Fee Paid)",
+        }.get(status, status.replace("_", " ").title())
+        total = float(order.get("total", 0) or 0)
+        fee_paid = status in {"delivery_fee_paid", "pending_payment", "paid", "cod_pending", "delivered"} or bool(order.get("delivery_fee_paid"))
+        due = max(total - 300, 0) if fee_paid else total
         buttons.append([InlineKeyboardButton(
-            text=f"#{display_id} - {status}", 
-            callback_data=f"admin_view_order_{o['_id']}"
+            text=f"#{short_id} · {label_status} · Due {due:g} ETB",
+            callback_data=f"admin_view_order_{order_id}"
         )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-def admin_back_orders_kb(order_id: str = None):
-    # Added order_id parameter so we can build the action buttons
+
+def admin_back_orders_kb(order_id: str = None, status: str = ""):
     buttons = []
     if order_id:
-        buttons.append([InlineKeyboardButton(text="✅ Mark as Complete", callback_data=f"admin_complete_{order_id}")])
-        buttons.append([InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_reject_{order_id}")])
-    
+        if status not in {"delivered", "cancelled", "rejected", "payment_rejected", "cancelled_after_fee"}:
+            buttons.append([InlineKeyboardButton(text="✅ Mark as Complete", callback_data=f"admin_complete_{order_id}")])
+            buttons.append([InlineKeyboardButton(text="❌ Cancel Order", callback_data=f"admin_cancel_{order_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 Back to Orders", callback_data="admin_all_orders")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
-# --- CONFIRMATION KEYBOARDS ---
+
+def _confirmation(order_id: str, yes_text: str, yes_action: str):
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=yes_text, callback_data=f"confirm_{yes_action}_{order_id}"),
+        InlineKeyboardButton(text="↩️ No, Go Back", callback_data=f"admin_view_order_{order_id}"),
+    ]])
+
+
 def confirm_approve_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ YES, Approve", callback_data=f"confirm_approve_{order_id}"),
-            InlineKeyboardButton(text="❌ No, Go Back", callback_data="admin_all_orders")
-        ]
-    ])
+    return _confirmation(order_id, "✅ YES, APPROVE", "approve")
+
 
 def confirm_reject_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="❌ YES, Reject", callback_data=f"confirm_reject_{order_id}"),
-            InlineKeyboardButton(text="✅ No, Go Back", callback_data="admin_all_orders")
-        ]
-    ])
+    return _confirmation(order_id, "❌ YES, REJECT", "reject")
+
 
 def confirm_complete_kb(order_id: str):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ YES, Complete", callback_data=f"confirm_complete_{order_id}"),
-            InlineKeyboardButton(text="❌ No, Go Back", callback_data="admin_all_orders")
-        ]
-    ])
+    return _confirmation(order_id, "✅ YES, COMPLETE", "complete")
 
-def size_selection_kb(sizes: list, product_id: str, lang: str):
-    t = TEXTS[lang]
-    buttons = []
-    for idx, size in enumerate(sizes):
-        button_text = size.split("|")[0].strip() if "|" in size else size
-        buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"selectsize_{idx}_{product_id}")])
-    
-    buttons.append([InlineKeyboardButton(text=t["btn_cancel"], callback_data="menu_main")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def confirm_cancel_kb(order_id: str):
+    return _confirmation(order_id, "❌ YES, CANCEL", "cancel")
+
+
+def confirm_verify_fee_kb(order_id: str):
+    return _confirmation(order_id, "✅ YES, VERIFY FEE", "verify_fee")
+
+
+def confirm_reject_fee_kb(order_id: str):
+    return _confirmation(order_id, "❌ YES, REJECT FEE", "reject_fee")
