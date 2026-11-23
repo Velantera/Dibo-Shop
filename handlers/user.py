@@ -109,7 +109,7 @@ async def cmd_start(message: Message, state: FSMContext):
     username = user.username if user.username else ""
     await save_user(user.id, user.first_name, username)
 
-    if user.id == OWNER_IDa:
+    if user.id == OWNER_ID:
         admin_kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📋 All Orders", callback_data="admin_all_orders")],
             [
